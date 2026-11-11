@@ -2,6 +2,18 @@
 
 `@ahnseungchan/device-farm`의 바뀐 점을 적는다.
 
+## [0.1.2] - 2026-11-11
+
+### Docs
+
+- README를 영어로 다시 쓰고 webview-kit README 형식(배지·한 줄 소개·데모 GIF·Live demo·Why 표·Features·Install·FAQ·Contributing)으로 맞춤. 한국어 문서는 `docs/README.ko.md`로 옮김
+- `docs/assets/demo.gif` 추가: 데모 화면을 Playwright로 녹화해 ffmpeg로 만든다(`tools/record-demo-gif.ts`)
+
+### Added
+
+- 데모 모드(`apps/web/demo/`): 서버·기기 없이 가상 앱 「Sample Shop」 가짜 데이터로 화면을 띄운다. 바꾸는 버튼은 「Demo mode: read-only」 토스트만 띄운다. `npm run demo:dev`·`demo:build`·`demo:preview`(127.0.0.1:5499). npm 패키지에는 들어가지 않는다
+- GitHub Actions: CI(typecheck·test·build·데모 빌드), 데모를 GitHub Pages(https://ahnseungc.github.io/device-farm/)에 배포
+
 ## [0.1.1] - 2026-11-11
 
 ### Docs

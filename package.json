@@ -1,6 +1,6 @@
 {
   "name": "@ahnseungchan/device-farm",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "실기기 WebView 앱 QA 자동화 디바이스팜. Android(adb+CDP)·iOS(Appium) 기기에서 기준 화면 비교, 버튼 눌러보기·화면 지도, 플로우 녹화, 카오스 탐색, 정책·피그마 대조를 돌리고 Claude Code MCP로 연결한다.",
   "type": "module",
   "bin": {
@@ -21,6 +21,9 @@
   ],
   "scripts": {
     "dev": "vite --config apps/web/vite.config.ts --configLoader runner",
+    "demo:dev": "vite --config apps/web/demo/vite.config.ts --configLoader runner",
+    "demo:build": "vite build --config apps/web/demo/vite.config.ts --configLoader runner",
+    "demo:preview": "vite preview --config apps/web/demo/vite.config.ts --configLoader runner",
     "build": "rm -rf dist && tsup && vite build --config apps/web/vite.config.ts --configLoader runner --outDir ../../dist/web --emptyOutDir && tsx tools/build-templates.ts",
     "test": "for f in $(find packages apps tools -name '*.test.ts' -not -path '*/node_modules/*'); do npx tsx \"$f\" || exit 1; done",
     "typecheck": "tsc --noEmit",
