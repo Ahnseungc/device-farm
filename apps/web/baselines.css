@@ -1,0 +1,63 @@
+/* 기준 화면. SEED 토큰만 쓴다. */
+.baselines-page {
+  min-width: 0;
+}
+
+.baselines-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--seed-dimension-x3);
+  padding: var(--seed-dimension-x4) var(--seed-dimension-x5);
+  background: var(--seed-color-bg-layer-default);
+  border: 1px solid var(--seed-color-stroke-neutral-muted);
+  border-radius: var(--seed-radius-r4);
+}
+
+.baselines-card {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x4);
+  padding: var(--seed-dimension-x5);
+  background: var(--seed-color-bg-layer-default);
+  border: 1px solid var(--seed-color-stroke-neutral-muted);
+  border-radius: var(--seed-radius-r4);
+}
+
+.baselines-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: var(--seed-dimension-x3);
+}
+
+.baselines-candidate {
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x2);
+  min-width: 0;
+  padding: var(--seed-dimension-x2);
+  border: 1px solid var(--seed-color-stroke-neutral-muted);
+  border-radius: var(--seed-radius-r3);
+  background: var(--seed-color-bg-layer-default);
+}
+
+.baselines-candidate[data-checked] {
+  border-color: var(--seed-color-stroke-neutral-contrast);
+  background: var(--seed-color-bg-neutral-weak);
+}
+
+.baselines-shot {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--seed-radius-r2);
+  background: var(--seed-color-bg-neutral-weak);
+  cursor: pointer;
+}
+
+.baselines-candidate label {
+  min-width: 0;
+  word-break: break-all;
+}

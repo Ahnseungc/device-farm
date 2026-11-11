@@ -1,0 +1,21 @@
+{
+  "name": "@device-farm/server",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "description": "디바이스팜 서버 상태·HTTP API·새 빌드 감시",
+  "dependencies": {
+    "@device-farm/core": "*",
+    "@device-farm/devices": "*",
+    "@device-farm/engine": "*",
+    "google-auth-library": "^10.4.0",
+    "pngjs": "^7.0.0",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.1",
+    "vite": "^7.1.12"
+  }
+}

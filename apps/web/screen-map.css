@@ -1,0 +1,125 @@
+/* 화면 지도 트리: 위 화면 카드에서 아래 도착 화면으로 선을 내린다(탑다운). SEED 토큰만 쓴다. */
+.smap-trees {
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x10);
+}
+
+/* 루트마다 가로 스크롤. 트리가 좁으면 가운데 둔다 */
+.smap-tree {
+  display: flex;
+  overflow-x: auto;
+  padding-bottom: var(--seed-dimension-x2);
+}
+
+.smap-tree > .smap-node {
+  margin: 0 auto;
+}
+
+.smap-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: max-content;
+}
+
+.smap-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x1);
+  width: 200px;
+  box-sizing: border-box;
+  padding: var(--seed-dimension-x3);
+  border: 1px solid var(--seed-color-stroke-neutral-muted);
+  border-radius: var(--seed-radius-r3);
+  background: var(--seed-color-bg-layer-default);
+}
+
+.smap-card-muted {
+  border-style: dashed;
+  background: var(--seed-color-bg-neutral-weak);
+}
+
+.smap-leaf-toggle {
+  all: unset;
+  cursor: pointer;
+}
+
+.smap-leaves {
+  margin: 0;
+  padding-left: var(--seed-dimension-x4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x1);
+}
+
+/* 카드 아래로 내려오는 줄기 + 자식들을 가로로 늘어놓는다 */
+.smap-children {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  padding-top: var(--seed-dimension-x4);
+}
+
+.smap-children::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  height: var(--seed-dimension-x4);
+  border-left: 1px solid var(--seed-color-stroke-neutral-muted);
+}
+
+/* 자식마다: 가로 막대에서 아래로 선이 내려와 버튼 이름 → 도착 카드 */
+.smap-child {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--seed-dimension-x4) var(--seed-dimension-x2) 0;
+}
+
+.smap-child::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  border-top: 1px solid var(--seed-color-stroke-neutral-muted);
+}
+
+.smap-child:first-child::before {
+  left: 50%;
+}
+
+.smap-child:last-child::before {
+  right: 50%;
+}
+
+.smap-child:only-child::before {
+  display: none;
+}
+
+.smap-child::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  height: var(--seed-dimension-x4);
+  border-left: 1px solid var(--seed-color-stroke-neutral-muted);
+}
+
+/* 내려온 선 끝의 버튼 이름. 아래 카드까지 짧은 선을 잇는다 */
+.smap-label {
+  position: relative;
+  max-width: 200px;
+  margin-bottom: var(--seed-dimension-x2);
+  padding: var(--seed-dimension-x0_5) var(--seed-dimension-x2);
+  border: 1px solid var(--seed-color-stroke-neutral-muted);
+  border-radius: var(--seed-radius-full);
+  background: var(--seed-color-bg-layer-default);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-sizing: border-box;
+}

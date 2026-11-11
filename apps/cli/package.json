@@ -1,0 +1,12 @@
+{
+  "name": "@device-farm/cli",
+  "private": true,
+  "type": "module",
+  "description": "SSH·터미널용 명령(device-run, explore, qa, record)",
+  "dependencies": {
+    "@device-farm/core": "*",
+    "@device-farm/devices": "*",
+    "@device-farm/engine": "*",
+    "@device-farm/server": "*"
+  }
+}

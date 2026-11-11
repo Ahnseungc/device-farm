@@ -1,0 +1,9 @@
+node_modules/
+test-results/
+.env
+.env.*
+!.env.example
+*.p8
+# 내 앱 설정은 저장소에 올리지 않는다(farm.config.example.ts를 복사해 쓴다)
+farm.config.ts
+.claude/settings.local.json

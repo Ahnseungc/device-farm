@@ -1,0 +1,9 @@
+{
+  "name": "@device-farm/core",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "description": "순수 도메인 로직·타입. node·외부 패키지를 쓰지 않는다."
+}

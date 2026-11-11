@@ -1,0 +1,30 @@
+/* 플로우 화면. 카드·툴바는 baselines.css를 같이 쓴다. SEED 토큰만 쓴다. */
+.flows-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--seed-dimension-x3);
+}
+
+.flows-prd {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
+.flows-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x2);
+  padding: var(--seed-dimension-x4);
+  border: 1px solid var(--seed-color-stroke-neutral-muted);
+  border-radius: var(--seed-radius-r3);
+}
+
+.flows-steps {
+  margin: 0;
+  padding-left: var(--seed-dimension-x5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x1);
+}

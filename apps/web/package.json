@@ -1,0 +1,21 @@
+{
+  "name": "@device-farm/web",
+  "private": true,
+  "type": "module",
+  "description": "디바이스팜 화면. 런타임 로직은 core만 쓴다(server는 vite 플러그인 설정에서만).",
+  "dependencies": {
+    "@device-farm/core": "*",
+    "@device-farm/server": "*",
+    "@karrotmarket/react-monochrome-icon": "^1.30.0",
+    "@seed-design/css": "^3.0.0",
+    "@seed-design/react": "^3.0.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@vitejs/plugin-react": "^5.0.4",
+    "vite": "^7.1.12"
+  }
+}

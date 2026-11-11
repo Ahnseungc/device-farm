@@ -1,0 +1,171 @@
+/* 결과 화면 + 실패 상세. SEED 토큰만 쓴다. */
+.results-page {
+  min-width: 0;
+}
+
+.results-card {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x4);
+  padding: var(--seed-dimension-x5);
+  background: var(--seed-color-bg-layer-default);
+  border: 1px solid var(--seed-color-stroke-neutral-muted);
+  border-radius: var(--seed-radius-r4);
+}
+
+.results-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--seed-dimension-x2);
+}
+
+.results-head p {
+  margin: 0;
+}
+
+/* 표는 카드 안에서만 가로로 스크롤한다. */
+.results-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+  border: 1px solid var(--seed-color-stroke-neutral-muted);
+  border-radius: var(--seed-radius-r3);
+}
+
+.results-table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--seed-color-fg-neutral);
+}
+
+.results-table th,
+.results-table td {
+  padding: var(--seed-dimension-x3) var(--seed-dimension-x4);
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--seed-color-stroke-neutral-muted);
+}
+
+.results-table thead th {
+  background: var(--seed-color-bg-neutral-weak);
+  vertical-align: top;
+}
+
+.results-table tbody th {
+  font-weight: 500;
+}
+
+.results-table tbody tr:last-child th,
+.results-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.results-cell-button {
+  display: inline-flex;
+  padding: 0;
+  border: none;
+  background: none;
+  border-radius: var(--seed-radius-r1);
+  cursor: pointer;
+}
+
+.results-cell-button:hover {
+  opacity: 0.8;
+}
+
+.results-cell-button:focus-visible {
+  outline: 2px solid var(--seed-color-stroke-focus-ring);
+  outline-offset: 2px;
+}
+
+.results-messages {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x1);
+}
+
+/* 실패 상세 */
+.failure-images {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--seed-dimension-x3);
+}
+
+.failure-figure {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x1_5);
+  min-width: 0;
+}
+
+.failure-shot {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--seed-radius-r2);
+  border: 1px solid var(--seed-color-stroke-neutral-muted);
+  background: var(--seed-color-bg-neutral-weak);
+  box-sizing: border-box;
+}
+
+.failure-shot-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 9 / 16;
+}
+
+/* 데이터 QA 규칙 목록: 배지 · 규칙 이름(+실패 사유) */
+.failure-checks {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x2);
+}
+
+.failure-checks li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--seed-dimension-x2);
+}
+
+.failure-video {
+  width: 100%;
+  max-width: 360px;
+  border-radius: var(--seed-radius-r2);
+  background: var(--seed-color-bg-neutral-weak);
+}
+
+.failure-logs {
+  margin: 0;
+  padding: var(--seed-dimension-x2) var(--seed-dimension-x3) var(--seed-dimension-x2) var(--seed-dimension-x8);
+  max-height: 280px;
+  overflow: auto;
+  border-radius: var(--seed-radius-r2);
+  background: var(--seed-color-bg-neutral-weak);
+  color: var(--seed-color-fg-neutral-muted);
+  font-size: 12px;
+  line-height: 1.6;
+  word-break: break-all;
+}
+
+.failure-logs li[data-source="console"] {
+  color: var(--seed-color-fg-neutral);
+}
+
+.failure-logs li[data-source="crash"] {
+  color: var(--seed-color-fg-critical);
+}
+
+.failure-log-meta {
+  color: var(--seed-color-fg-neutral-subtle);
+}

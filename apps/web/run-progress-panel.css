@@ -1,0 +1,74 @@
+/* 점검 진행 패널. 색·간격·라운드는 SEED 토큰만 쓴다. */
+.progress-device {
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x2);
+  padding: var(--seed-dimension-x4);
+  border: 1px solid var(--seed-color-stroke-neutral-muted);
+  border-radius: var(--seed-radius-r3);
+  background: var(--seed-color-bg-layer-default);
+}
+
+.progress-bar {
+  height: var(--seed-dimension-x2);
+  border-radius: var(--seed-radius-full);
+  background: var(--seed-color-bg-neutral-weak);
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  border-radius: var(--seed-radius-full);
+  background: var(--seed-color-bg-positive-solid);
+  transition: width var(--seed-duration-d4) var(--seed-timing-function-easing);
+}
+
+.progress-bar-fill[data-failed="true"] {
+  background: var(--seed-color-bg-critical-solid);
+}
+
+.progress-failures {
+  margin: 0;
+  padding: var(--seed-dimension-x3);
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x2);
+  border-radius: var(--seed-radius-r2);
+  background: var(--seed-color-bg-critical-weak);
+}
+
+.progress-failures li {
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x0_5, 2px);
+}
+
+.progress-reopen {
+  position: fixed;
+  right: var(--seed-dimension-x5);
+  bottom: var(--seed-dimension-x5);
+  z-index: 20;
+  padding: var(--seed-dimension-x3) var(--seed-dimension-x4);
+  border: none;
+  border-radius: var(--seed-radius-full);
+  background: var(--seed-color-bg-neutral-inverted);
+  color: var(--seed-color-fg-neutral-inverted);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: var(--seed-shadow-s2);
+  cursor: pointer;
+}
+
+/* 지금 도는 플로우의 스텝. 지금 스텝만 굵게, 끝난 스텝은 초록 체크. */
+.progress-flow-steps {
+  margin: 0;
+  padding: var(--seed-dimension-x2) var(--seed-dimension-x3);
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x1);
+  border-radius: var(--seed-radius-r2);
+  background: var(--seed-color-bg-neutral-weak);
+}

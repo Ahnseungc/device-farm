@@ -1,0 +1,14 @@
+{
+  "name": "@device-farm/engine",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "description": "점검·탐색 실행, 결과·기준 화면·플로우·화면 지도 저장",
+  "dependencies": {
+    "@device-farm/core": "*",
+    "@device-farm/devices": "*",
+    "pngjs": "^7.0.0"
+  }
+}

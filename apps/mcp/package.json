@@ -1,0 +1,14 @@
+{
+  "name": "@device-farm/mcp",
+  "private": true,
+  "type": "module",
+  "description": "Claude Code용 기기 탐색 MCP 서버",
+  "dependencies": {
+    "@device-farm/core": "*",
+    "@device-farm/devices": "*",
+    "@device-farm/engine": "*",
+    "@device-farm/server": "*",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "zod": "^4.6.7"
+  }
+}

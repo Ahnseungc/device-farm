@@ -1,0 +1,109 @@
+/* 앱 셸. 색·간격·라운드는 SEED 토큰만 쓴다. 화면별 스타일은 각 *-screen.css. */
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+}
+
+.farm-app {
+  display: flex;
+  min-height: 100vh;
+  background: var(--seed-color-bg-layer-basement);
+  color: var(--seed-color-fg-neutral);
+  font-family: var(--seed-font-family);
+}
+
+/* 왼쪽 사이드 패널: 로고와 화면 메뉴. 스크롤해도 붙어 있다. */
+.farm-sidebar {
+  position: sticky;
+  top: 0;
+  /* SEED 레이어(사이드 패널·다이얼로그, z-index 2)가 위로 오게 1로 둔다 */
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x6);
+  flex-shrink: 0;
+  width: 180px;
+  height: 100vh;
+  box-sizing: border-box;
+  padding: var(--seed-dimension-x5) var(--seed-dimension-x3);
+  background: var(--seed-color-bg-layer-default);
+  border-right: 1px solid var(--seed-color-stroke-neutral-muted);
+}
+
+.farm-sidebar-logo {
+  padding: 0 var(--seed-dimension-x2);
+}
+
+.farm-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x1);
+}
+
+.farm-nav-item {
+  all: unset;
+  box-sizing: border-box;
+  padding: var(--seed-dimension-x2_5) var(--seed-dimension-x3);
+  border-radius: var(--seed-radius-r2);
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--seed-color-fg-neutral-muted);
+  cursor: pointer;
+}
+
+.farm-nav-item:hover {
+  background: var(--seed-color-bg-neutral-weak);
+}
+
+.farm-nav-item:focus-visible {
+  outline: 2px solid var(--seed-color-stroke-neutral-muted);
+  outline-offset: -2px;
+}
+
+.farm-nav-item[aria-current="page"] {
+  background: var(--seed-color-bg-neutral-weak);
+  color: var(--seed-color-fg-neutral);
+  font-weight: 700;
+}
+
+.farm-main {
+  flex: 1;
+  min-width: 0;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: var(--seed-dimension-x5);
+  box-sizing: border-box;
+}
+
+/* 좁은 화면은 사이드 패널을 위쪽 가로 메뉴로 바꾼다 */
+@media (max-width: 640px) {
+  .farm-app {
+    flex-direction: column;
+  }
+
+  .farm-sidebar {
+    flex-direction: row;
+    align-items: center;
+    gap: var(--seed-dimension-x3);
+    width: 100%;
+    height: auto;
+    padding: var(--seed-dimension-x2) var(--seed-dimension-x3);
+    border-right: none;
+    border-bottom: 1px solid var(--seed-color-stroke-neutral-muted);
+    overflow-x: auto;
+  }
+
+  .farm-sidebar-logo {
+    padding: 0;
+  }
+
+  .farm-nav {
+    flex-direction: row;
+  }
+
+  .farm-nav-item {
+    white-space: nowrap;
+  }
+}

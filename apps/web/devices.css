@@ -1,0 +1,170 @@
+/* 기기 격자 · 기기 상세 · 실시간 화면. SEED 토큰만 쓴다. */
+.devices-page {
+  min-width: 0;
+}
+
+.devices-card {
+  background: var(--seed-color-bg-layer-default);
+  border: 1px solid var(--seed-color-stroke-neutral-muted);
+  border-radius: var(--seed-radius-r4);
+  box-sizing: border-box;
+}
+
+/* 점검 실행 폼 */
+.devices-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x5);
+  padding: var(--seed-dimension-x5);
+}
+
+.devices-form-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--seed-dimension-x4);
+}
+
+.devices-version {
+  flex: 1;
+  min-width: 200px;
+  max-width: 360px;
+}
+
+.devices-card-action {
+  display: flex;
+}
+
+/* 기기 격자 */
+.devices-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: var(--seed-dimension-x4);
+}
+
+.devices-device {
+  display: flex;
+  gap: var(--seed-dimension-x4);
+  padding: var(--seed-dimension-x4);
+}
+
+.devices-thumb {
+  flex-shrink: 0;
+  width: 160px;
+}
+
+/* 실시간 화면: 폰 비율, 프레임 전에는 스켈레톤 색 */
+.devices-live {
+  position: relative;
+}
+
+.devices-media {
+  display: block;
+  height: auto;
+  max-width: 100%;
+  border-radius: var(--seed-radius-r3);
+  background: var(--seed-color-bg-neutral-weak);
+  aspect-ratio: auto 9 / 19.5;
+  object-fit: contain;
+}
+
+.devices-media[data-ready="false"] {
+  aspect-ratio: 9 / 19.5;
+}
+
+.devices-media-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  aspect-ratio: 9 / 19.5;
+  border-radius: var(--seed-radius-r3);
+  background: var(--seed-color-bg-neutral-weak);
+}
+
+.devices-live-status {
+  position: absolute;
+  left: var(--seed-dimension-x2);
+  right: var(--seed-dimension-x2);
+  bottom: var(--seed-dimension-x2);
+  padding: var(--seed-dimension-x1) var(--seed-dimension-x2);
+  border-radius: var(--seed-radius-r2);
+  background: var(--seed-color-palette-static-black-alpha-700);
+  color: var(--seed-color-palette-static-white);
+  font-size: var(--seed-font-size-t2);
+  line-height: var(--seed-line-height-t2);
+  text-align: center;
+}
+
+/* 기기 상세 */
+.devices-detail-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--seed-dimension-x3);
+}
+
+.devices-detail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--seed-dimension-x5);
+}
+
+/*
+ * 크게 보기: 폰 화면 전체(앱 하단바 포함)가 페이지 스크롤 없이 보이게, 남은 높이에 맞춰 너비를 줄인다.
+ * 170px = 앱 헤더 + 본문 위아래 여백 + 상세 머리줄. 탭 좌표는 이 상자 기준 비율이라 크기가 바뀌어도 맞다.
+ */
+.devices-touch {
+  width: min(360px, calc((100dvh - 170px) * 9 / 19.5));
+  max-width: 100%;
+  touch-action: none;
+  user-select: none;
+  border-radius: var(--seed-radius-r3);
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+}
+
+.devices-touch[data-locked="true"] {
+  cursor: crosshair;
+  outline-color: var(--seed-color-stroke-warning-solid);
+}
+
+.devices-controls {
+  flex: 1;
+  min-width: 260px;
+  max-width: 420px;
+  padding: var(--seed-dimension-x5);
+}
+
+.devices-key-row {
+  display: flex;
+  gap: var(--seed-dimension-x2);
+}
+
+.devices-text-form {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--seed-dimension-x2);
+}
+
+.devices-text-form .devices-version {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  .devices-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .devices-thumb {
+    width: 128px;
+  }
+
+  .devices-controls {
+    min-width: 0;
+    max-width: none;
+    width: 100%;
+  }
+}

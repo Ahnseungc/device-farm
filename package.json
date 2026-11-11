@@ -1,0 +1,28 @@
+{
+  "name": "device-farm",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --config apps/web/vite.config.ts --configLoader runner",
+    "test": "for f in $(find packages apps tools -name '*.test.ts' -not -path '*/node_modules/*'); do npx tsx \"$f\" || exit 1; done",
+    "typecheck": "tsc --noEmit",
+    "device-run": "tsx apps/cli/src/device-run.ts",
+    "device-explore": "tsx apps/cli/src/device-explore.ts",
+    "explore-allowlist": "tsx apps/cli/src/explore-allowlist.ts",
+    "qa": "tsx apps/cli/src/qa-run.ts",
+    "record": "tsx apps/cli/src/record.ts",
+    "device-mcp": "tsx apps/mcp/src/server.ts",
+    "chaos": "tsx apps/cli/src/chaos.ts",
+    "policy-watch": "tsx apps/cli/src/policy-watch.ts",
+    "policy-check": "tsx apps/cli/src/policy-check.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ]
+}

@@ -1,0 +1,195 @@
+/* 카오스 탐색 화면. SEED 토큰만 쓴다. */
+.chaos-page {
+  min-width: 0;
+}
+
+.chaos-card {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x3);
+  padding: var(--seed-dimension-x5);
+  background: var(--seed-color-bg-layer-default);
+  border: 1px solid var(--seed-color-stroke-neutral-muted);
+  border-radius: var(--seed-radius-r4);
+}
+
+/* 실행 목록: 카드를 가로로 늘어놓고 넘치면 줄바꿈 */
+.chaos-runs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--seed-dimension-x2);
+}
+
+.chaos-run {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x1);
+  padding: var(--seed-dimension-x3);
+  border: 1px solid var(--seed-color-stroke-neutral-muted);
+  border-radius: var(--seed-radius-r3);
+  cursor: pointer;
+}
+
+.chaos-run[aria-selected="true"] {
+  border-color: var(--seed-color-stroke-neutral-contrast);
+  background: var(--seed-color-bg-neutral-weak);
+}
+
+.chaos-run:focus-visible,
+.chaos-step-head:focus-visible {
+  outline: 2px solid var(--seed-color-stroke-brand-solid);
+  outline-offset: 1px;
+}
+
+.chaos-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--seed-dimension-x2);
+}
+
+.chaos-stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x0_5);
+  padding: var(--seed-dimension-x3);
+  border-radius: var(--seed-radius-r3);
+  background: var(--seed-color-bg-neutral-weak);
+}
+
+@media (max-width: 640px) {
+  .chaos-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.chaos-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x1);
+}
+
+.chaos-step {
+  border: 1px solid var(--seed-color-stroke-neutral-muted);
+  border-radius: var(--seed-radius-r2);
+}
+
+.chaos-step-error {
+  border-color: var(--seed-color-stroke-critical-weak);
+}
+
+.chaos-step-head {
+  all: unset;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: var(--seed-dimension-x6) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--seed-dimension-x2);
+  width: 100%;
+  padding: var(--seed-dimension-x2) var(--seed-dimension-x3);
+  cursor: pointer;
+}
+
+.chaos-step-no {
+  color: var(--seed-color-fg-neutral-subtle);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* 화면 → 행동 → 화면 한 줄. 좁으면 줄바꿈 */
+.chaos-step-flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--seed-dimension-x1_5);
+  min-width: 0;
+}
+
+.chaos-path {
+  overflow-wrap: anywhere;
+}
+
+.chaos-action {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--seed-dimension-x1);
+  padding: var(--seed-dimension-x0_5) var(--seed-dimension-x2);
+  border-radius: var(--seed-radius-full);
+  background: var(--seed-color-bg-informative-weak);
+}
+
+.chaos-action-chaos {
+  background: var(--seed-color-bg-warning-weak);
+}
+
+.chaos-step-badges {
+  justify-content: flex-end;
+}
+
+.chaos-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x3);
+  padding: 0 var(--seed-dimension-x3) var(--seed-dimension-x3) calc(var(--seed-dimension-x6) + var(--seed-dimension-x5));
+}
+
+.chaos-cand {
+  display: grid;
+  grid-template-columns: minmax(0, 220px) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--seed-dimension-x2);
+}
+
+.chaos-cand-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chaos-cand-picked .chaos-cand-name {
+  font-weight: var(--seed-font-weight-bold);
+}
+
+.chaos-cand-track {
+  height: var(--seed-dimension-x2);
+  border-radius: var(--seed-radius-full);
+  background: var(--seed-color-bg-neutral-weak);
+  overflow: hidden;
+}
+
+.chaos-cand-fill {
+  height: 100%;
+  border-radius: var(--seed-radius-full);
+  background: var(--seed-color-bg-neutral-inverted);
+  opacity: 0.35;
+}
+
+.chaos-cand-picked .chaos-cand-fill {
+  opacity: 1;
+}
+
+.chaos-cand-value {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.chaos-issues {
+  margin: 0;
+  padding-left: var(--seed-dimension-x4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x1);
+  overflow-wrap: anywhere;
+}
+
+.chaos-shot {
+  width: 220px;
+  max-width: 100%;
+  border-radius: var(--seed-radius-r2);
+  border: 1px solid var(--seed-color-stroke-neutral-muted);
+}
