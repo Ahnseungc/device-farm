@@ -166,3 +166,7 @@ MCP 도구: `device_start` → `device_look` / `device_press` / `device_go_home`
 - [docs/design-explore.md](docs/design-explore.md) — 탐색 점검과 쓰기 요청 가드
 - [docs/design-chaos.md](docs/design-chaos.md) — 카오스 탐색
 - [docs/design-policy-figma.md](docs/design-policy-figma.md) — 정책·피그마 대조
+
+## 라이선스
+
+[MIT](LICENSE)
