@@ -29,11 +29,19 @@ function demoSwap(): Plugin {
   };
 }
 
+/** 데모는 영어 화면이다. index.html의 언어·제목만 바꾼다(실제 빌드는 그대로) */
+function englishHtml(): Plugin {
+  return {
+    name: "device-farm-demo-english-html",
+    transformIndexHtml: (html) => html.replace('<html lang="ko"', '<html lang="en"').replace("<title>디바이스팜</title>", "<title>Device Farm · Demo</title>"),
+  };
+}
+
 export default defineConfig({
   root: webRoot,
   // Pages 주소는 /device-farm/. 로컬은 `/`
   base: process.env.DEMO_BASE ?? "/",
-  plugins: [demoSwap(), react()],
+  plugins: [demoSwap(), englishHtml(), react()],
   build: { outDir: path.join(repoRoot, "demo-dist"), emptyOutDir: true },
   preview: { host: "127.0.0.1", port: previewPort, strictPort: true },
   server: { host: "127.0.0.1", port: previewPort, strictPort: true },

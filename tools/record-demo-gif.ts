@@ -35,7 +35,7 @@ async function waitForServer(): Promise<void> {
 }
 
 async function openTab(page: Page, label: string): Promise<void> {
-  await page.getByRole("navigation", { name: "화면" }).getByRole("button", { name: label, exact: true }).click();
+  await page.getByRole("navigation", { name: "Screens" }).getByRole("button", { name: label, exact: true }).click();
   await pause(page, 900);
 }
 
@@ -58,33 +58,33 @@ async function walkthrough(page: Page): Promise<void> {
   await page.getByRole("article", { name: "Pixel 8" }).waitFor();
   await pause(page, 2_200);
 
-  await openTab(page, "결과");
+  await openTab(page, "Results");
   await pause(page, 1_000);
-  await page.getByRole("button", { name: /Pixel 8 실패 상세 보기/ }).first().click();
+  await page.getByRole("button", { name: /Pixel 8 view failure details/ }).first().click();
   await pause(page, 3_200);
   await page.keyboard.press("Escape");
   await pause(page, 600);
 
-  await openTab(page, "플로우");
-  const map = page.getByRole("region", { name: "화면 지도", exact: true });
+  await openTab(page, "Flows");
+  const map = page.getByRole("region", { name: "Screen map", exact: true });
   await map.scrollIntoViewIfNeeded();
   await pause(page, 1_200);
   await map.getByRole("button", { expanded: false }).first().click();
   await pause(page, 2_200);
 
-  await openTab(page, "카오스");
+  await openTab(page, "Chaos");
   await smoothScroll(page, 0);
-  await page.getByRole("button", { name: /로딩 중 뒤로/ }).first().click();
+  await page.getByRole("button", { name: /Back while loading/ }).first().click();
   await pause(page, 600);
-  await page.getByRole("img", { name: /7스텝 화면/ }).scrollIntoViewIfNeeded();
+  await page.getByRole("img", { name: /step 7 screen/ }).scrollIntoViewIfNeeded();
   await pause(page, 2_600);
 
-  await openTab(page, "정책");
+  await openTab(page, "Policy");
   await smoothScroll(page, 0);
   await pause(page, 1_000);
-  await page.getByRole("button", { name: /출석체크 정책/ }).click();
+  await page.getByRole("button", { name: /Check-in policy/ }).click();
   await pause(page, 600);
-  await page.getByRole("region", { name: "뽑은 규칙", exact: true }).scrollIntoViewIfNeeded();
+  await page.getByRole("region", { name: "Extracted rules", exact: true }).scrollIntoViewIfNeeded();
   await pause(page, 2_400);
 }
 
@@ -105,7 +105,7 @@ async function main(): Promise<void> {
   try {
     await waitForServer();
     const browser = await chromium.launch();
-    const context = await browser.newContext({ viewport, deviceScaleFactor: 1, locale: "ko-KR", recordVideo: { dir: workDir, size: viewport } });
+    const context = await browser.newContext({ viewport, deviceScaleFactor: 1, locale: "en-US", recordVideo: { dir: workDir, size: viewport } });
     const page = await context.newPage();
     await walkthrough(page);
     const video = page.video();

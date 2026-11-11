@@ -5,6 +5,7 @@
 import type { LogEntry } from "@device-farm/core/device/types";
 
 import { ApiError, type api as realApi } from "../api-client";
+import { setLocale } from "../i18n";
 import {
   candidateScreens,
   demoApp,
@@ -33,6 +34,8 @@ const missingFile = "data:,";
 const resultRootMarker = "test-results/";
 const forbiddenStatus = 403;
 
+// 데모는 영어로 띄운다(앱 설정을 받기 전 「불러오는 중」부터)
+setLocale("en");
 mountDemoRibbon();
 
 const read = <T>(value: T) => () => Promise.resolve(structuredClone(value));
@@ -63,7 +66,7 @@ export const api: typeof realApi = {
   chaosRuns: read(demoChaosSummaries),
   chaosRun: (id: string) => {
     const run = demoChaosRuns.find((item) => item.runId === id);
-    return run ? Promise.resolve(structuredClone(run)) : Promise.reject(new ApiError(404, "카오스 실행을 찾지 못했습니다."));
+    return run ? Promise.resolve(structuredClone(run)) : Promise.reject(new ApiError(404, "Chaos run not found."));
   },
   policy: read(demoPolicy),
   checkPolicy: readOnly,
