@@ -9,3 +9,4 @@ farm.config.ts
 .claude/settings.local.json
 dist/
 *.tgz
+demo-dist/
