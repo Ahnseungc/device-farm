@@ -76,9 +76,9 @@ console.log("policy ok");
 
 // 앱 설정의 pushTokenRequests는 허용 목록이 비어도 통과한다. 금지어(accounts 등)보다 먼저 본다
 const empty = { entries: [] };
-assert.deepEqual(decideRequest("POST", "/v1/users/1122/push-token", empty), { allow: true });
+assert.deepEqual(decideRequest("POST", "/v1/users/42/push-token", empty), { allow: true });
 // 같은 경로라도 메서드가 다르면 그대로 막는다
-assert.equal(decideRequest("DELETE", "/v1/users/1122/push-token", empty).allow, false);
+assert.equal(decideRequest("DELETE", "/v1/users/42/push-token", empty).allow, false);
 // 외부 주소도 전체 주소로 적으면 통과시킨다. 금지어(accounts)에 걸리는 주소도 먼저 본다
 const withFirebase = defineAppConfig({
   ...sampleApp,
