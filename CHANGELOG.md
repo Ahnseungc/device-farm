@@ -2,6 +2,13 @@
 
 `@ahnseungchan/device-farm`의 바뀐 점을 적는다.
 
+## [0.1.1] - 2026-11-11
+
+### Docs
+
+- README를 WebViewKit 형식으로 개편: 가운데 정렬 로고·배지·바로가기, 구조 다이어그램(SVG), Why 비교표, 긴 내용은 접기(`<details>`), Contributing
+- 로고·구조 다이어그램을 `docs/assets/`에 추가(npm에서도 보이도록 GitHub 절대 URL로 링크, 패키지에는 넣지 않음)
+
 ## [0.1.0] - 2026-11-11
 
 ### Added
