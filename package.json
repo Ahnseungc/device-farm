@@ -1,11 +1,31 @@
 {
-  "name": "device-farm",
-  "private": true,
+  "name": "@ahnseungchan/device-farm",
+  "version": "0.1.0",
+  "description": "실기기 WebView 앱 QA 자동화 디바이스팜. Android(adb+CDP)·iOS(Appium) 기기에서 기준 화면 비교, 버튼 눌러보기·화면 지도, 플로우 녹화, 카오스 탐색, 정책·피그마 대조를 돌리고 Claude Code MCP로 연결한다.",
   "type": "module",
+  "bin": {
+    "device-farm": "dist/bin.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "CHANGELOG.md"
+  ],
   "scripts": {
     "dev": "vite --config apps/web/vite.config.ts --configLoader runner",
+    "build": "rm -rf dist && tsup && vite build --config apps/web/vite.config.ts --configLoader runner --outDir ../../dist/web --emptyOutDir && tsx tools/build-templates.ts",
     "test": "for f in $(find packages apps tools -name '*.test.ts' -not -path '*/node_modules/*'); do npx tsx \"$f\" || exit 1; done",
     "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build",
+    "publish:npm": "npm publish --access public",
     "device-run": "tsx apps/cli/src/device-run.ts",
     "device-explore": "tsx apps/cli/src/device-explore.ts",
     "explore-allowlist": "tsx apps/cli/src/explore-allowlist.ts",
@@ -16,14 +36,62 @@
     "policy-watch": "tsx apps/cli/src/policy-watch.ts",
     "policy-check": "tsx apps/cli/src/policy-check.ts"
   },
+  "keywords": [
+    "device-farm",
+    "qa",
+    "e2e",
+    "webview",
+    "hybrid-app",
+    "android",
+    "ios",
+    "adb",
+    "cdp",
+    "appium",
+    "webdriveragent",
+    "visual-regression",
+    "screenshot-testing",
+    "chaos-testing",
+    "monkey-testing",
+    "mcp",
+    "claude-code",
+    "figma",
+    "confluence"
+  ],
+  "author": "Seungchan Ahn",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ahnseungc/device-farm.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Ahnseungc/device-farm/issues"
+  },
+  "homepage": "https://github.com/Ahnseungc/device-farm#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "google-auth-library": "^10.4.0",
+    "playwright": "^1.63.0",
+    "pngjs": "^7.0.0",
+    "tsx": "^4.20.6",
+    "vite": "^7.1.12",
+    "webdriverio": "^9.20.0",
+    "ws": "^8.18.3",
+    "zod": "^4.6.7"
+  },
   "devDependencies": {
     "@types/node": "^26.6.4",
+    "tsup": "^8.5.1",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3"
   },
   "workspaces": [
     "packages/*",
     "apps/*"
-  ],
-  "license": "MIT"
+  ]
 }

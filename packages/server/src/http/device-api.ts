@@ -2,7 +2,7 @@ import { readFileSync, realpathSync, statSync } from "node:fs";
 import { get as httpGet, type IncomingMessage, type ServerResponse } from "node:http";
 import path from "node:path";
 
-import type { Plugin } from "vite";
+import type { Plugin, PreviewServer, ViteDevServer } from "vite";
 import { WebSocket, WebSocketServer } from "ws";
 
 import { publicAppConfig, type AppConfig } from "@device-farm/core/config/app-config";
@@ -446,30 +446,34 @@ export function devicePlugin(options: { app: AppConfig; farm?: Farm }): Plugin {
   const { app, farm } = options;
   return {
     name: "device-farm-devices",
-    configureServer(server) {
-      const running = farm ? null : createFarm({ app });
-      const active = farm ?? running;
-      if (!active) return;
-      void running?.start().catch((error: unknown) => console.error(`[farm] 시작 실패: ${errorMessage(error)}`));
-      const domains = allowedDomains(undefined, app.access.allowedDomains);
-      // 플러그인 configureServer는 Vite 내부 미들웨어보다 먼저 붙는다. 화면 파일까지 이 관문을 지난다.
-      server.middlewares.use(createAccessMiddleware(domains));
-      server.middlewares.use(deviceMiddleware(active));
-      const sockets = new WebSocketServer({ noServer: true });
-      server.httpServer?.on("upgrade", (req, socket, head) => {
-        const id = streamIdOf(req.url);
-        if (id === null) return;
-        const access = decideAccess({ remoteAddress: req.socket.remoteAddress, headers: req.headers }, domains);
-        if (!access.ok) {
-          socket.end(`HTTP/1.1 ${access.status} ${access.status === 401 ? "Unauthorized" : "Forbidden"}\r\nConnection: close\r\n\r\n`);
-          return;
-        }
-        sockets.handleUpgrade(req, socket, head, (ws) => void attachStream(active, id, ws));
-      });
-      server.httpServer?.on("close", () => {
-        sockets.close();
-        void running?.stop();
-      });
-    },
+    configureServer: attach,
+    // `npx device-farm dev`는 미리 빌드한 화면을 vite preview로 연다. API·스트림은 dev와 똑같이 붙인다.
+    configurePreviewServer: attach,
   };
+
+  function attach(server: Pick<ViteDevServer | PreviewServer, "middlewares" | "httpServer">): void {
+    const running = farm ? null : createFarm({ app });
+    const active = farm ?? running;
+    if (!active) return;
+    void running?.start().catch((error: unknown) => console.error(`[farm] 시작 실패: ${errorMessage(error)}`));
+    const domains = allowedDomains(undefined, app.access.allowedDomains);
+    // 플러그인 configureServer는 Vite 내부 미들웨어보다 먼저 붙는다. 화면 파일까지 이 관문을 지난다.
+    server.middlewares.use(createAccessMiddleware(domains));
+    server.middlewares.use(deviceMiddleware(active));
+    const sockets = new WebSocketServer({ noServer: true });
+    server.httpServer?.on("upgrade", (req, socket, head) => {
+      const id = streamIdOf(req.url);
+      if (id === null) return;
+      const access = decideAccess({ remoteAddress: req.socket.remoteAddress, headers: req.headers }, domains);
+      if (!access.ok) {
+        socket.end(`HTTP/1.1 ${access.status} ${access.status === 401 ? "Unauthorized" : "Forbidden"}\r\nConnection: close\r\n\r\n`);
+        return;
+      }
+      sockets.handleUpgrade(req, socket, head, (ws) => void attachStream(active, id, ws));
+    });
+    server.httpServer?.on("close", () => {
+      sockets.close();
+      void running?.stop();
+    });
+  }
 }
