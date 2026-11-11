@@ -1,7 +1,7 @@
 {
   "name": "@ahnseungchan/device-farm",
   "version": "0.1.2",
-  "description": "실기기 WebView 앱 QA 자동화 디바이스팜. Android(adb+CDP)·iOS(Appium) 기기에서 기준 화면 비교, 버튼 눌러보기·화면 지도, 플로우 녹화, 카오스 탐색, 정책·피그마 대조를 돌리고 Claude Code MCP로 연결한다.",
+  "description": "A device farm that runs QA on real phones for WebView-based mobile apps: baseline screen diffs, button crawl and screen map, flow recording, seeded chaos exploration, policy/Figma copy checks, and a Claude Code MCP server. Configure your app in one farm.config.ts.",
   "type": "module",
   "bin": {
     "device-farm": "dist/bin.js"

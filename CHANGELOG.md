@@ -6,7 +6,7 @@
 
 ### Docs
 
-- README를 영어로 다시 쓰고 webview-kit README 형식(배지·한 줄 소개·데모 GIF·Live demo·Why 표·Features·Install·FAQ·Contributing)으로 맞춤. 한국어 문서는 `docs/README.ko.md`로 옮김
+- README를 영어로 다시 쓰고 webview-kit README 형식(배지·한 줄 소개·데모 GIF·Live demo·Features·Install·FAQ·Contributing)으로 맞춤. Why 표는 빼고 기능·사용법만 둠. npm 패키지 설명을 영어로 바꿈. 한국어 문서는 `docs/README.ko.md`로 옮김
 - `docs/assets/demo.gif` 추가: 데모 화면을 Playwright로 녹화해 ffmpeg로 만든다(`tools/record-demo-gif.ts`)
 
 ### Added

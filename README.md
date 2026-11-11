@@ -14,19 +14,6 @@
   <b><a href="https://ahnseungc.github.io/device-farm/">Live demo →</a></b> (fixture data for a fictional "Sample Shop" app, no server or device needed, read-only)
 </p>
 
-## Why
-
-Manual QA grows with every device and every screen. device-farm runs that repetition on real devices for you.
-
-| Manual QA                                                       | With device-farm                                                                                                                   |
-| --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Install each new build on every phone and open screens one by one | Picks up new Firebase App Distribution / TestFlight builds, installs them, opens fixed screens by deep link, and diffs them against baselines |
-| "Did we tap every button?" depends on memory                    | Taps each button on a screen, records what happened (navigate / popup / no reaction / error), and builds a **screen map**           |
-| Scenario tests are code you write and maintain                  | Record a person driving the device, or assemble steps from the screen map; only confirmed flows run                                 |
-| Back, double taps, and backgrounding are left to luck           | Seeded chaos exploration: weighted random actions you can replay                                                                   |
-| Policy docs and Figma copy are checked against screens by eye   | Compares Confluence policy rules and Figma text with the text on screen                                                            |
-| Automated exploration might press "Buy" or "Delete account"     | A write-request guard and a forbidden-button list. If the guard cannot attach, nothing starts                                       |
-
 The app under test is not in the code. Package ids, web origins, bottom tabs, forbidden words, and scenarios are all **injected** through `farm.config.ts`.
 Android is driven with adb + Chrome DevTools Protocol (Playwright), iOS with Appium (XCUITest, WebDriverAgent), both inside the app's WebView.
 

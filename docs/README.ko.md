@@ -17,19 +17,6 @@
   <img src="https://raw.githubusercontent.com/Ahnseungc/device-farm/main/docs/assets/architecture.svg?sanitize=true" width="760" alt="device-farm 구조: farm.config.ts를 읽은 웹 화면·CLI·MCP가 Android(adb+CDP)·iOS(Appium) 기기를 조작하고 결과를 test-results에 남긴다" />
 </p>
 
-## Why
-
-손으로 하는 QA는 기기 수와 화면 수에 비례해 늘어납니다. device-farm은 그 반복을 실기기 위에서 자동으로 돌립니다.
-
-| 손으로 하는 QA                                         | device-farm                                                                                                       |
-| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
-| 새 빌드가 나오면 기기마다 깔고 화면을 하나씩 열어 본다 | Firebase App Distribution·TestFlight 새 빌드를 받아 연결된 기기에 깔고, 고정 주소 화면을 딥링크로 열어 기준 화면과 비교 |
-| 버튼을 다 눌러 봤는지 기억에 의존한다                  | 화면의 버튼을 하나씩 눌러 반응(이동·팝업·반응 없음·오류)을 남기고, 결과가 **화면 지도**가 된다                     |
-| 시나리오 테스트를 코드로 짜고 고친다                   | 사람이 기기를 움직이면 녹화해 플로우 후보로 올리고, 확정한 것만 돈다                                              |
-| 뒤로·연타·백그라운드 같은 엣지 케이스는 운에 맡긴다    | 시드 고정 카오스 탐색으로 재현 가능한 무작위 조작                                                                 |
-| 정책 문서·피그마 문구와 화면을 눈으로 대조한다         | Confluence 정책·피그마 문구를 화면 글자와 맞춰 본다                                                               |
-| 탐색 자동화가 실제 결제·탈퇴를 누를까 무섭다           | 쓰기 요청 가드와 금지 버튼 목록. 가드를 못 걸면 시작하지 않는다                                                   |
-
 점검할 앱은 코드에 없습니다. 패키지 id·웹 주소·하단 탭·금지어·시나리오처럼 앱마다 다른 값은 전부 `farm.config.ts`로 **주입**합니다.
 Android는 adb + Chrome DevTools Protocol(Playwright), iOS는 Appium(XCUITest·WebDriverAgent)으로 앱 안 WebView를 직접 조작합니다.
 
