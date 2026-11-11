@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="360" viewBox="0 0 760 360" role="img" aria-label="device-farm 구조: farm.config.ts를 읽은 웹 화면·CLI·MCP가 Android(adb+CDP)·iOS(Appium) 기기를 조작하고 결과를 test-results에 남긴다">
+  <style>
+    text { font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Segoe UI", sans-serif; fill: #0E3B22; }
+    .t { font-size: 15px; font-weight: 700; }
+    .s { font-size: 12px; fill: #2F5F43; }
+    .m { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; font-weight: 600; }
+    .box { fill: #FFFFFF; stroke: #34B36A; stroke-width: 1.5; }
+    .core { fill: #E8F8EC; stroke: #34B36A; stroke-width: 1.5; }
+    .line { stroke: #34B36A; stroke-width: 1.6; fill: none; marker-end: url(#a); }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#34B36A"/></marker>
+  </defs>
+  <rect width="760" height="360" rx="16" fill="#F6FBF7"/>
+
+  <rect class="box" x="24" y="40" width="190" height="84" rx="10"/>
+  <text class="m" x="44" y="72">farm.config.ts</text>
+  <text class="s" x="44" y="94">앱 id·웹 주소·탭·금지어·시나리오</text>
+  <text class="s" x="44" y="112">+ .env (토큰)</text>
+
+  <rect class="box" x="24" y="236" width="190" height="84" rx="10"/>
+  <text class="t" x="44" y="268">사람 · Claude Code</text>
+  <text class="s" x="44" y="290">웹 화면 · CLI · MCP 도구</text>
+
+  <rect class="core" x="270" y="40" width="220" height="280" rx="12"/>
+  <text class="m" x="290" y="72">npx device-farm</text>
+  <text class="s" x="290" y="102">dev · 화면 + API 서버</text>
+  <text class="s" x="290" y="124">check · 기준 화면 비교·버튼 눌러보기</text>
+  <text class="s" x="290" y="146">explore · chaos · 탐색·카오스</text>
+  <text class="s" x="290" y="168">record · 플로우 녹화·화면 지도</text>
+  <text class="s" x="290" y="190">qa · 데이터 QA</text>
+  <text class="s" x="290" y="212">policy-* · 정책·피그마 대조</text>
+  <text class="s" x="290" y="234">mcp · Claude Code 도구</text>
+  <rect x="290" y="256" width="180" height="44" rx="8" fill="#FFFFFF" stroke="#C9F2D4"/>
+  <text class="s" x="304" y="275">쓰기 요청 가드 · 금지 버튼</text>
+  <text class="s" x="304" y="292">(가드를 못 걸면 시작 안 함)</text>
+
+  <rect class="box" x="546" y="40" width="190" height="84" rx="10"/>
+  <text class="t" x="566" y="72">Android</text>
+  <text class="s" x="566" y="94">adb + Chrome DevTools</text>
+  <text class="s" x="566" y="112">Protocol (WebView)</text>
+
+  <rect class="box" x="546" y="138" width="190" height="84" rx="10"/>
+  <text class="t" x="566" y="170">iOS</text>
+  <text class="s" x="566" y="192">Appium · XCUITest</text>
+  <text class="s" x="566" y="210">WebDriverAgent</text>
+
+  <rect class="box" x="546" y="236" width="190" height="84" rx="10"/>
+  <text class="m" x="566" y="268">test-results/</text>
+  <text class="s" x="566" y="290">실행 기록·스크린샷·기준 화면</text>
+  <text class="s" x="566" y="308">화면 지도·플로우 후보</text>
+
+  <path class="line" d="M214 82H266"/>
+  <path class="line" d="M214 278H266"/>
+  <path class="line" d="M490 82H542"/>
+  <path class="line" d="M490 180H542"/>
+  <path class="line" d="M490 278H542"/>
+</svg>
