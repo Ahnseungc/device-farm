@@ -135,6 +135,7 @@ The config file is resolved as `FARM_CONFIG` → `farm.config.ts` in the working
 | `deepLink`                          |          | `{ scheme, homeHost }` for path deep links                                         |
 | `guard`                             |          | Words and API patterns **added** to the built-in deny lists, and `pushTokenRequests` that always pass |
 | `scenarios`, `excludedScenarioPaths` |         | Fixed screens to check, and paths to skip                                          |
+| `locale`                            |          | UI language, `"ko"` (default) or `"en"`. `FARM_LOCALE=en` overrides it              |
 
 <details>
 <summary><b>All fields</b></summary>
@@ -233,9 +234,9 @@ Build checks and remote control support iOS (Appium). Exploration, chaos, record
 </details>
 
 <details>
-<summary><b>Why is the UI in Korean?</b></summary>
+<summary><b>Is the UI available in English?</b></summary>
 
-It was built for a Korean team first. The CLI help and UI text are Korean for now; an English UI PR is welcome.
+Yes. The web UI supports Korean and English. It defaults to Korean; set `locale: "en"` in `farm.config.ts` or run with `FARM_LOCALE=en`. The live demo is in English. CLI help, logs, and server messages are still Korean.
 
 </details>
 

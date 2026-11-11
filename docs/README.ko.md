@@ -136,6 +136,7 @@ export default defineAppConfig({
 | `deepLink`                           |      | `{ scheme, homeHost }` 경로형 딥링크                                         |
 | `guard`                              |      | 기본 금지어·금지 API에 **더할** 값, 늘 통과시킬 `pushTokenRequests`          |
 | `scenarios`·`excludedScenarioPaths`  |      | 고정 주소 화면 점검 목록과 뺄 경로                                           |
+| `locale`                             |      | 화면 언어 `"ko"`(기본)·`"en"`. 환경 변수 `FARM_LOCALE=en`이 이긴다           |
 
 <details>
 <summary><b>전체 필드</b></summary>
@@ -230,6 +231,13 @@ claude mcp add --scope project device-farm -- npx device-farm mcp
 <summary><b>iOS도 탐색·카오스가 되나요?</b></summary>
 
 빌드 점검·원격 조작은 iOS(Appium)를 지원합니다. 탐색·카오스·녹화·MCP 탐색은 지금 Android dev 빌드만 지원합니다.
+
+</details>
+
+<details>
+<summary><b>화면을 영어로 볼 수 있나요?</b></summary>
+
+네. 웹 화면은 한국어·영어를 지원합니다. 기본은 한국어이고, `farm.config.ts`에 `locale: "en"`을 넣거나 `FARM_LOCALE=en`으로 띄우면 영어입니다. 라이브 데모는 영어입니다. CLI 도움말·로그·서버 메시지는 아직 한국어입니다.
 
 </details>
 
