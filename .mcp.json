@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "device-farm": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT:-.}/node_modules/tsx/dist/cli.mjs", "${CLAUDE_PLUGIN_ROOT:-.}/apps/mcp/src/server.ts"]
+    }
+  }
+}

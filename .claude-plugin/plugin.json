@@ -1,0 +1,7 @@
+{
+  "name": "device-farm",
+  "version": "0.1.0",
+  "description": "WebView 앱을 실기기(Android adb+CDP, iOS Appium)에서 QA 자동화하는 디바이스팜. 점검 대상 앱은 farm.config.ts로 주입한다.",
+  "author": { "name": "안승찬" },
+  "keywords": ["qa", "device-farm", "webview", "android", "ios", "appium", "mcp"]
+}
