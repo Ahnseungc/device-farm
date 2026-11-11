@@ -5,6 +5,7 @@ import type { DeviceOutcome, DeviceRun, DeviceScreen, OutcomeStatus, ScreenStatu
 
 import { api, usePoll } from "./api-client";
 import { FailureDetail } from "./failure-detail";
+import { dateLocale, t } from "./i18n";
 import { Badge, type BadgeProps } from "./seed-design/ui/badge";
 import { Callout } from "./seed-design/ui/callout";
 import { ProgressCircle } from "./seed-design/ui/progress-circle";
@@ -13,16 +14,17 @@ import "./results.css";
 
 type CellStatus = ScreenStatus | OutcomeStatus;
 
-const cellLabel = {
-  passed: "통과",
-  failed: "실패",
-  candidate: "기준 후보",
-  login_required: "로그인 필요",
-  running: "진행 중",
-  skipped: "건너뜀",
-  install_failed: "설치 실패",
-  offline: "연결 끊김",
-} as const satisfies Record<CellStatus, string>;
+const cellLabel = (status: CellStatus): string =>
+  ({
+    passed: t("통과", "Passed"),
+    failed: t("실패", "Failed"),
+    candidate: t("기준 후보", "Candidate"),
+    login_required: t("로그인 필요", "Login required"),
+    running: t("진행 중", "Running"),
+    skipped: t("건너뜀", "Skipped"),
+    install_failed: t("설치 실패", "Install failed"),
+    offline: t("연결 끊김", "Offline"),
+  })[status];
 
 type BadgeLook = Pick<BadgeProps, "tone" | "variant">;
 
@@ -37,7 +39,7 @@ const cellBadge = {
   offline: { tone: "warning", variant: "weak" },
 } as const satisfies Record<CellStatus, BadgeLook>;
 
-const triggerLabel = { manual: "수동", auto: "자동" } as const satisfies Record<DeviceRun["trigger"], string>;
+const triggerLabel = (trigger: DeviceRun["trigger"]): string => (trigger === "auto" ? t("자동", "Auto") : t("수동", "Manual"));
 
 const triggerTone = { manual: "neutral", auto: "informative" } as const satisfies Record<
   DeviceRun["trigger"],
@@ -55,7 +57,7 @@ function scenarioRows(run: DeviceRun): string[] {
 }
 
 function formatTime(value: string | null): string {
-  return value ? new Date(value).toLocaleString("ko-KR") : "진행 중";
+  return value ? new Date(value).toLocaleString(dateLocale()) : t("진행 중", "Running");
 }
 
 export function ResultsScreen() {
@@ -68,16 +70,16 @@ export function ResultsScreen() {
       {latest.error ? <Callout tone="critical" description={latest.error} /> : null}
       {latest.data === undefined && !latest.error ? (
         <HStack gap="x2" justify="center" py="x8">
-          <ProgressCircle aria-label="불러오는 중" />
-          <Text color="fg.neutralMuted">불러오는 중</Text>
+          <ProgressCircle aria-label={t("불러오는 중", "Loading")} />
+          <Text color="fg.neutralMuted">{t("불러오는 중", "Loading")}</Text>
         </HStack>
       ) : null}
       {latest.data === null ? (
         <div className="results-card">
           <ResultSection
             size="medium"
-            title="아직 점검한 기록이 없어요"
-            description="기기 화면에서 점검을 돌리면 결과가 여기에 보여요."
+            title={t("아직 점검한 기록이 없어요", "No check runs yet")}
+            description={t("기기 화면에서 점검을 돌리면 결과가 여기에 보여요.", "Run a check from the Devices tab and the results show up here.")}
           />
         </div>
       ) : null}
@@ -96,14 +98,14 @@ function RunTable({ run, onFailed }: RunTableProps) {
   const rows = scenarioRows(run);
   const messages = run.outcomes.filter((outcome) => outcome.message);
   return (
-    <section className="results-card" aria-label="최근 점검 결과">
+    <section className="results-card" aria-label={t("최근 점검 결과", "Latest check results")}>
       <div className="results-head">
         <HStack gap="x2" align="center" wrap="wrap">
           <Text as="h2" textStyle="t5Bold">
             {run.kind} {run.version}
           </Text>
           <Badge tone={triggerTone[run.trigger]} variant="weak">
-            {triggerLabel[run.trigger]}
+            {triggerLabel(run.trigger)}
           </Badge>
         </HStack>
         <Text as="p" textStyle="t3Regular" color="fg.neutralSubtle">
@@ -113,15 +115,15 @@ function RunTable({ run, onFailed }: RunTableProps) {
       {run.outcomes.length === 0 ? (
         <ResultSection
           size="medium"
-          title="점검한 기기가 없어요"
-          description="이 실행 때 연결된 기기가 없었어요. 기기를 연결하고 다시 돌려 주세요."
+          title={t("점검한 기기가 없어요", "No devices were checked")}
+          description={t("이 실행 때 연결된 기기가 없었어요. 기기를 연결하고 다시 돌려 주세요.", "No devices were connected during this run. Connect a device and run it again.")}
         />
       ) : (
         <div className="results-scroll">
           <table className="results-table">
             <thead>
               <tr>
-                <th scope="col">화면</th>
+                <th scope="col">{t("화면", "Screen")}</th>
                 {run.outcomes.map((outcome) => (
                   <th key={outcome.device.id} scope="col">
                     <VStack gap="x1" align="flex-start">
@@ -169,7 +171,7 @@ function StatusBadge({ status, title }: { status: CellStatus; title?: string }) 
   const look = cellBadge[status];
   return (
     <Badge tone={look.tone} variant={look.variant} title={title}>
-      {cellLabel[status]}
+      {cellLabel(status)}
     </Badge>
   );
 }
@@ -191,7 +193,7 @@ function ResultCell({ outcome, scenario, onFailed }: ResultCellProps) {
           type="button"
           className="results-cell-button"
           title={screen.message}
-          aria-label={`${scenario} · ${outcome.device.model} 실패 상세 보기`}
+          aria-label={t(`${scenario} · ${outcome.device.model} 실패 상세 보기`, `${scenario} · ${outcome.device.model} view failure details`)}
           onClick={() => onFailed({ outcome, screen })}
         >
           <StatusBadge status={status} />

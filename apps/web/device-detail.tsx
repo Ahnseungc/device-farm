@@ -6,6 +6,7 @@ import type { InputEvent, Point } from "@device-farm/core/device/input";
 
 import { api, errorMessage, type DeviceWithState } from "./api-client";
 import { StateChip } from "./devices-screen";
+import { t } from "./i18n";
 import { LiveView } from "./live-view";
 import { ActionButton } from "./seed-design/ui/action-button";
 import { Callout } from "./seed-design/ui/callout";
@@ -100,7 +101,7 @@ export function DeviceDetail({ device, onClose }: DeviceDetailProps) {
       <div className="devices-detail-header">
         <ActionButton variant="ghost" size="small" onClick={onClose}>
           <PrefixIcon svg={<IconChevronLeftLine />} />
-          목록으로
+          {t("목록으로", "Back to list")}
         </ActionButton>
         <Text as="h2" textStyle="t6Bold" color="fg.neutral">
           {device.model} · {isIos ? "iOS" : "Android"} {device.osVersion}
@@ -115,12 +116,12 @@ export function DeviceDetail({ device, onClose }: DeviceDetailProps) {
           onPointerDown={locked ? onPointerDown : undefined}
           onPointerUp={locked ? onPointerUp : undefined}
           onPointerCancel={() => (gesture.current = null)}
-          aria-label="기기 화면. 조작 시작 후 클릭하면 탭, 끌면 스와이프"
+          aria-label={t("기기 화면. 조작 시작 후 클릭하면 탭, 끌면 스와이프", "Device screen. After taking control, click to tap and drag to swipe")}
         >
           {offline ? (
             <div className="devices-media-empty">
               <Text textStyle="t4Medium" color="fg.neutralSubtle">
-                연결 끊김
+                {t("연결 끊김", "Offline")}
               </Text>
             </div>
           ) : (
@@ -133,10 +134,10 @@ export function DeviceDetail({ device, onClose }: DeviceDetailProps) {
           <VStack gap="x4">
             <VStack gap="x1">
               <Text as="h3" textStyle="t5Bold" color="fg.neutral">
-                조작
+                {t("조작", "Control")}
               </Text>
               <Text as="p" textStyle="t3Regular" color="fg.neutralSubtle">
-                설치 버전 {device.appVersion ?? "없음"}
+                {t("설치 버전", "Installed")} {device.appVersion ?? t("없음", "none")}
               </Text>
             </VStack>
             <ActionButton
@@ -145,7 +146,7 @@ export function DeviceDetail({ device, onClose }: DeviceDetailProps) {
               onClick={() => void toggleLock()}
               disabled={offline}
             >
-              {locked ? "조작 끝" : "조작 시작"}
+              {locked ? t("조작 끝", "Release control") : t("조작 시작", "Take control")}
             </ActionButton>
             <div className="devices-key-row">
               <ActionButton
@@ -154,7 +155,7 @@ export function DeviceDetail({ device, onClose }: DeviceDetailProps) {
                 disabled={!locked || isIos}
                 onClick={() => void send({ type: "key", key: "back" })}
               >
-                뒤로
+                {t("뒤로", "Back")}
               </ActionButton>
               <ActionButton
                 variant="neutralWeak"
@@ -162,18 +163,18 @@ export function DeviceDetail({ device, onClose }: DeviceDetailProps) {
                 disabled={!locked}
                 onClick={() => void send({ type: "key", key: "home" })}
               >
-                홈
+                {t("홈", "Home")}
               </ActionButton>
             </div>
-            {isIos ? <Callout tone="neutral" description="iOS는 뒤로 키가 없습니다." /> : null}
+            {isIos ? <Callout tone="neutral" description={t("iOS는 뒤로 키가 없습니다.", "iOS has no back key.")} /> : null}
             <form className="devices-text-form" onSubmit={submitText}>
               <div className="devices-version">
-                <TextField label="텍스트 입력" value={text} onValueChange={({ value }) => setText(value)} disabled={!locked}>
+                <TextField label={t("텍스트 입력", "Type text")} value={text} onValueChange={({ value }) => setText(value)} disabled={!locked}>
                   <TextFieldInput />
                 </TextField>
               </div>
               <ActionButton type="submit" variant="neutralWeak" size="medium" disabled={!locked || !text}>
-                보내기
+                {t("보내기", "Send")}
               </ActionButton>
             </form>
             {error ? (

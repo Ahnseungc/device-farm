@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { Device } from "@device-farm/core/device/types";
 
 import { mjpegUrl, streamSocketUrl } from "./api-client";
+import { t } from "./i18n";
 
 type StreamHeader = { codec: string; width: number; height: number };
 
@@ -55,13 +56,13 @@ export function LiveView({ device, width }: LiveViewProps) {
       <img
         className="devices-media"
         src={mjpegUrl(device.id)}
-        alt={`${device.model} 실시간 화면`}
+        alt={`${device.model} ${t("실시간 화면", "live screen")}`}
         style={style}
         draggable={false}
       />
     );
   }
-  return <AndroidCanvas deviceId={device.id} label={`${device.model} 실시간 화면`} style={style} />;
+  return <AndroidCanvas deviceId={device.id} label={`${device.model} ${t("실시간 화면", "live screen")}`} style={style} />;
 }
 
 interface AndroidCanvasProps {
@@ -72,13 +73,13 @@ interface AndroidCanvasProps {
 
 function AndroidCanvas({ deviceId, label, style }: AndroidCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [status, setStatus] = useState("연결 중");
+  const [status, setStatus] = useState(() => t("연결 중", "Connecting"));
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     if (typeof VideoDecoder === "undefined") {
-      setStatus("이 브라우저는 WebCodecs를 지원하지 않습니다.");
+      setStatus(t("이 브라우저는 WebCodecs를 지원하지 않습니다.", "This browser does not support WebCodecs."));
       return;
     }
     const context = canvas.getContext("2d");
@@ -101,7 +102,7 @@ function AndroidCanvas({ deviceId, label, style }: AndroidCanvasProps) {
     const configure = (header: StreamHeader) => {
       canvas.width = header.width;
       canvas.height = header.height;
-      decoder = new VideoDecoder({ output: draw, error: (error) => setStatus(`디코딩 오류: ${error.message}`) });
+      decoder = new VideoDecoder({ output: draw, error: (error) => setStatus(`${t("디코딩 오류", "Decode error")}: ${error.message}`) });
       // description 없이 구성하면 디코더가 Annex-B(시작 코드) 입력을 받는다.
       decoder.configure({ codec: header.codec, optimizeForLatency: true });
       setStatus("");
@@ -131,17 +132,17 @@ function AndroidCanvas({ deviceId, label, style }: AndroidCanvasProps) {
       if (typeof message.data === "string") {
         const header = parseHeader(message.data);
         if (header) configure(header);
-        else setStatus("스트림 첫 메시지를 읽지 못했습니다.");
+        else setStatus(t("스트림 첫 메시지를 읽지 못했습니다.", "Could not read the first stream message."));
         return;
       }
       try {
         feed(new Uint8Array(message.data));
       } catch (error) {
-        setStatus(`디코딩 오류: ${error instanceof Error ? error.message : String(error)}`);
+        setStatus(`${t("디코딩 오류", "Decode error")}: ${error instanceof Error ? error.message : String(error)}`);
       }
     };
-    socket.onerror = () => setStatus("스트림에 연결하지 못했습니다.");
-    socket.onclose = () => setStatus((current) => current || "스트림이 끊겼습니다.");
+    socket.onerror = () => setStatus(t("스트림에 연결하지 못했습니다.", "Could not connect to the stream."));
+    socket.onclose = () => setStatus((current) => current || t("스트림이 끊겼습니다.", "The stream disconnected."));
 
     return () => {
       socket.onclose = null;

@@ -4,6 +4,7 @@ import { HStack, Text, VStack } from "@seed-design/react";
 import type { ExploreAction, ExploreIssue, ExploreRun } from "@device-farm/core/explore/actions";
 
 import { api, errorMessage, joinPath, resultFileUrl, usePoll, type DeviceWithState } from "./api-client";
+import { plural, t } from "./i18n";
 import { ActionButton } from "./seed-design/ui/action-button";
 import { Badge } from "./seed-design/ui/badge";
 import { Callout } from "./seed-design/ui/callout";
@@ -15,8 +16,8 @@ import "./explore.css";
 type Notice = { text: string; error: boolean };
 
 function actionLabel(action: ExploreAction): string {
-  if (action.kind === "fill") return `입력 ${action.label}`;
-  return `${action.role === "link" ? "링크" : "버튼"} ${action.name}`;
+  if (action.kind === "fill") return `${t("입력", "Fill")} ${action.label}`;
+  return `${action.role === "link" ? t("링크", "Link") : t("버튼", "Button")} ${action.name}`;
 }
 
 function deviceName(devices: DeviceWithState[], id: string): string {
@@ -34,22 +35,22 @@ export function ExploreScreen() {
       <ExploreForm devices={list} onStarted={() => void runs.reload()} />
       <Callout
         tone="informative"
-        title="허용 목록"
-        description="허용 목록은 화면에서 고치지 않습니다. explore/allowlist.json을 고쳐 주세요."
+        title={t("허용 목록", "Allowlist")}
+        description={t("허용 목록은 화면에서 고치지 않습니다. explore/allowlist.json을 고쳐 주세요.", "The allowlist is not edited here. Edit explore/allowlist.json instead.")}
       />
       {runs.error ? <Callout tone="critical" description={runs.error} /> : null}
       {runs.data === undefined && !runs.error ? (
         <HStack gap="x2" justify="center" py="x8">
-          <ProgressCircle aria-label="불러오는 중" />
-          <Text color="fg.neutralMuted">불러오는 중</Text>
+          <ProgressCircle aria-label={t("불러오는 중", "Loading")} />
+          <Text color="fg.neutralMuted">{t("불러오는 중", "Loading")}</Text>
         </HStack>
       ) : null}
       {runs.data && runs.data.length === 0 ? (
         <div className="explore-card">
           <ResultSection
             size="medium"
-            title="아직 탐색한 기록이 없어요"
-            description="위에서 기기를 고르고 탐색을 실행하면 결과가 여기에 보여요."
+            title={t("아직 탐색한 기록이 없어요", "No explore runs yet")}
+            description={t("위에서 기기를 고르고 탐색을 실행하면 결과가 여기에 보여요.", "Pick devices above and run Explore; the results show up here.")}
           />
         </div>
       ) : null}
@@ -72,7 +73,7 @@ function ExploreForm({ devices, onStarted }: { devices: DeviceWithState[]; onSta
     setPending(true);
     try {
       const { runId } = await api.startExplore(selected.length > 0 ? selected : "all");
-      setMessage({ text: `탐색을 시작했습니다. (${runId})`, error: false });
+      setMessage({ text: `${t("탐색을 시작했습니다.", "Explore started.")} (${runId})`, error: false });
       onStarted();
     } catch (error) {
       setMessage({ text: errorMessage(error), error: true });
@@ -82,11 +83,11 @@ function ExploreForm({ devices, onStarted }: { devices: DeviceWithState[]; onSta
   }
 
   return (
-    <section className="explore-card" aria-label="탐색 실행">
+    <section className="explore-card" aria-label={t("탐색 실행", "Run explore")}>
       <Text as="h2" textStyle="t5Bold">
-        탐색 실행 (dev 빌드)
+        {t("탐색 실행 (dev 빌드)", "Run explore (dev build)")}
       </Text>
-      <CheckboxGroup label="기기 (고르지 않으면 전체)">
+      <CheckboxGroup label={t("기기 (고르지 않으면 전체)", "Devices (all if none selected)")}>
         {devices.map((device) => (
           <Checkbox
             key={device.id}
@@ -99,7 +100,7 @@ function ExploreForm({ devices, onStarted }: { devices: DeviceWithState[]; onSta
       </CheckboxGroup>
       <HStack gap="x3" align="center" wrap="wrap">
         <ActionButton variant="neutralSolid" size="medium" loading={pending} disabled={pending} onClick={() => void start()}>
-          탐색 실행
+          {t("탐색 실행", "Run explore")}
         </ActionButton>
         {message ? <NoticeText notice={message} /> : null}
       </HStack>
@@ -118,23 +119,23 @@ function NoticeText({ notice }: { notice: Notice }) {
 function RunSection({ run, title }: { run: ExploreRun; title: string }) {
   const actionsOf = (pathId: string) => run.paths.find((item) => item.id === pathId)?.actions ?? [];
   return (
-    <section className="explore-card" aria-label={`${title} 탐색 결과`}>
+    <section className="explore-card" aria-label={t(`${title} 탐색 결과`, `${title} explore results`)}>
       <div className="explore-head">
         <Text as="h2" textStyle="t5Bold">
           {title}
         </Text>
         <HStack gap="x1_5" wrap="wrap">
-          <Badge tone="neutral" variant="weak">{`경로 ${run.paths.length}개`}</Badge>
-          <Badge tone="positive" variant="weak">{`깨끗한 경로 ${run.cleanPathIds.length}개`}</Badge>
+          <Badge tone="neutral" variant="weak">{t(`경로 ${run.paths.length}개`, plural(run.paths.length, "path"))}</Badge>
+          <Badge tone="positive" variant="weak">{t(`깨끗한 경로 ${run.cleanPathIds.length}개`, `${run.cleanPathIds.length} clean`)}</Badge>
           <Badge tone="informative" variant={run.finishedAt ? "weak" : "outline"}>
-            {run.finishedAt ? "끝남" : "진행 중"}
+            {run.finishedAt ? t("끝남", "Finished") : t("진행 중", "Running")}
           </Badge>
         </HStack>
       </div>
 
       <VStack gap="x2" align="stretch">
         <Text as="h3" textStyle="t4Bold">
-          오류 {run.issues.length}건
+          {t(`오류 ${run.issues.length}건`, `Issues: ${run.issues.length}`)}
         </Text>
         {run.issues.map((issue, index) => (
           <IssueItem key={`${issue.pathId}-${index}`} run={run} issue={issue} actions={actionsOf(issue.pathId)} />
@@ -144,7 +145,7 @@ function RunSection({ run, title }: { run: ExploreRun; title: string }) {
       {run.replayFailures.length > 0 ? (
         <VStack gap="x2" align="stretch">
           <Text as="h3" textStyle="t4Bold">
-            재생 실패 {run.replayFailures.length}건
+            {t(`재생 실패 ${run.replayFailures.length}건`, `Replay failures: ${run.replayFailures.length}`)}
           </Text>
           {run.replayFailures.map((failure) => (
             <Text key={failure.pathId} textStyle="t3Regular" color="fg.neutralMuted">
@@ -156,17 +157,17 @@ function RunSection({ run, title }: { run: ExploreRun; title: string }) {
 
       <VStack gap="x2" align="stretch">
         <Text as="h3" textStyle="t4Bold">
-          차단된 요청 {run.blocked.length}건
+          {t(`차단된 요청 ${run.blocked.length}건`, `Blocked requests: ${run.blocked.length}`)}
         </Text>
         {run.blocked.length > 0 ? (
           <div className="explore-scroll">
             <table className="explore-table">
               <thead>
                 <tr>
-                  <th scope="col">메서드</th>
-                  <th scope="col">경로</th>
-                  <th scope="col">이유</th>
-                  <th scope="col">탐색 경로</th>
+                  <th scope="col">{t("메서드", "Method")}</th>
+                  <th scope="col">{t("경로", "Path")}</th>
+                  <th scope="col">{t("이유", "Reason")}</th>
+                  <th scope="col">{t("탐색 경로", "Explore path")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -201,7 +202,7 @@ function IssueItem({ run, issue, actions }: IssueItemProps) {
     setBusy(true);
     try {
       const issues = await api.replay({ runId: run.runId, deviceId: run.deviceId, pathId: issue.pathId });
-      const text = issues.length > 0 ? `다시 나옴: ${issues.map((item) => item.kind).join(", ")}` : "다시 돌렸더니 오류가 없습니다.";
+      const text = issues.length > 0 ? `${t("다시 나옴", "Reproduced")}: ${issues.map((item) => item.kind).join(", ")}` : t("다시 돌렸더니 오류가 없습니다.", "Replayed with no errors.");
       setReplayText({ text, error: false });
     } catch (error) {
       setReplayText({ text: errorMessage(error), error: true });
@@ -218,11 +219,11 @@ function IssueItem({ run, issue, actions }: IssueItemProps) {
         </Badge>
         <Text textStyle="t4Regular">{issue.message}</Text>
       </HStack>
-      <div className="explore-path" role="list" aria-label="재현 경로">
+      <div className="explore-path" role="list" aria-label={t("재현 경로", "Steps to reproduce")}>
         {actions.length === 0 ? (
           <span role="listitem">
             <Badge tone="neutral" variant="outline">
-              첫 화면
+              {t("첫 화면", "First screen")}
             </Badge>
           </span>
         ) : null}
@@ -237,21 +238,21 @@ function IssueItem({ run, issue, actions }: IssueItemProps) {
       <HStack gap="x3" align="center" wrap="wrap">
         {issue.screenshot ? (
           <a className="explore-link" href={resultFileUrl(issue.screenshot)} target="_blank" rel="noreferrer">
-            스크린샷
+            {t("스크린샷", "Screenshot")}
           </a>
         ) : null}
         {issue.logDir ? (
           <>
             <a className="explore-link" href={resultFileUrl(joinPath(issue.logDir, "logs.jsonl"))} target="_blank" rel="noreferrer">
-              로그
+              {t("로그", "Logs")}
             </a>
             <a className="explore-link" href={resultFileUrl(joinPath(issue.logDir, "video.mp4"))} target="_blank" rel="noreferrer">
-              영상
+              {t("영상", "Video")}
             </a>
           </>
         ) : null}
         <ActionButton variant="neutralWeak" size="small" loading={busy} disabled={busy} onClick={() => void replay()}>
-          다시 돌리기
+          {t("다시 돌리기", "Replay")}
         </ActionButton>
         {replayText ? <NoticeText notice={replayText} /> : null}
       </HStack>

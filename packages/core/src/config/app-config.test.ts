@@ -32,6 +32,7 @@ import { sampleApp } from "./sample-app";
   const view = publicAppConfig(sampleApp);
   assert.deepEqual(JSON.parse(JSON.stringify(view)), view);
   assert.equal(view.homeTabName, "홈");
+  assert.equal(view.locale, "ko");
 }
 
 console.log("app-config ok");

@@ -11,6 +11,8 @@ import type { PolicyIgnore } from "@device-farm/core/policy/compare";
 import type { PolicyWatchState } from "@device-farm/core/policy/snapshot";
 import type { FlowDocument, FlowStep } from "@device-farm/core/flows/schema";
 
+import { t } from "./i18n";
+
 export type DeviceWithState = Device & { state: DeviceState };
 export type DeviceSelection = string[] | "all";
 export type FlowsState = { candidates: FlowDocument[]; ready: FlowDocument[]; prds: string[]; prdRootSet: boolean; llmConfigured: boolean };
@@ -36,7 +38,7 @@ export class ApiError extends Error {
 
 function errorText(body: unknown, status: number): string {
   if (typeof body === "object" && body !== null && "error" in body && typeof body.error === "string") return body.error;
-  return `요청이 실패했습니다. (${status})`;
+  return `${t("요청이 실패했습니다.", "Request failed.")} (${status})`;
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -60,7 +62,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 export function errorMessage(error: unknown): string {
   if (error instanceof ApiError) return `${error.status} · ${error.message}`;
   if (error instanceof Error) return error.message;
-  return "알 수 없는 오류가 났습니다.";
+  return t("알 수 없는 오류가 났습니다.", "An unknown error occurred.");
 }
 
 const devicePath = (id: string) => `/api/devices/${encodeURIComponent(id)}`;
@@ -137,7 +139,7 @@ function isLogEntry(value: unknown): value is LogEntry {
 /** 실패 묶음의 `logs.jsonl`. 모양이 틀린 줄은 건너뛴다. */
 export async function fetchLogs(logDir: string): Promise<LogEntry[]> {
   const response = await fetch(resultFileUrl(joinPath(logDir, "logs.jsonl")));
-  if (!response.ok) throw new ApiError(response.status, "로그 파일을 읽지 못했습니다.");
+  if (!response.ok) throw new ApiError(response.status, t("로그 파일을 읽지 못했습니다.", "Could not read the log file."));
   const entries: LogEntry[] = [];
   for (const line of (await response.text()).split("\n")) {
     if (!line.trim()) continue;

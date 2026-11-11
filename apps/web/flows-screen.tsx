@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { HStack, Text, VStack } from "@seed-design/react";
 
-import { stepLabels, stepTarget, type FlowDocument } from "@device-farm/core/flows/schema";
+import { stepTarget, type FlowDocument, type FlowStep } from "@device-farm/core/flows/schema";
 
 import { api, errorMessage, usePoll } from "./api-client";
 import { useAppConfig } from "./app-context";
+import { t } from "./i18n";
 import { ActionButton } from "./seed-design/ui/action-button";
 import { Badge } from "./seed-design/ui/badge";
 import { Callout } from "./seed-design/ui/callout";
@@ -16,7 +17,11 @@ import { TextField, TextFieldInput } from "./seed-design/ui/text-field";
 import "./baselines.css";
 import "./flows.css";
 
-const proposalLabels = { create: "새로", update: "수정", delete: "삭제", keep: "그대로" } as const;
+const proposalLabel = (proposal: NonNullable<FlowDocument["proposal"]>): string =>
+  ({ create: t("새로", "New"), update: t("수정", "Update"), delete: t("삭제", "Delete"), keep: t("그대로", "Keep") })[proposal];
+
+const stepLabel = (type: FlowStep["type"]): string =>
+  ({ home: t("홈에서 시작", "Start at home"), click: t("누르기", "Tap"), expectText: t("문구 확인", "Expect text") })[type];
 const prdListId = "flow-prds";
 
 type Message = { text: string; error: boolean };
@@ -28,7 +33,7 @@ function FlowSteps({ flow }: { flow: FlowDocument }) {
       {flow.steps.map((step, index) => (
         <li key={index}>
           <Text textStyle="t3Regular">
-            {stepLabels[step.type]} 「{stepTarget(step, homeTabName)}」
+            {stepLabel(step.type)} {t("「", "“")}{stepTarget(step, homeTabName)}{t("」", "”")}
           </Text>
         </li>
       ))}
@@ -44,8 +49,8 @@ function FlowCard({ flow, children }: { flow: FlowDocument; children?: React.Rea
         <Text as="h4" textStyle="t4Bold">
           {flow.name}
         </Text>
-        {flow.proposal ? <Badge tone="informative" variant="weak">{proposalLabels[flow.proposal]}</Badge> : null}
-        {flow.status === "generation_failed" ? <Badge tone="critical" variant="weak">검증 실패</Badge> : null}
+        {flow.proposal ? <Badge tone="informative" variant="weak">{proposalLabel(flow.proposal)}</Badge> : null}
+        {flow.status === "generation_failed" ? <Badge tone="critical" variant="weak">{t("검증 실패", "Validation failed")}</Badge> : null}
       </HStack>
       <Text textStyle="t3Regular" color="fg.neutralSubtle">
         {flow.prd} · {flow.requirement}
@@ -65,7 +70,7 @@ function GenerateBar({ prds, ready, onDone }: { prds: string[]; ready: boolean; 
     setBusy(true);
     try {
       const result = await api.generateFlows(prd);
-      onDone({ text: result.skipped ? `건너뜀: ${result.reason ?? ""}` : `후보 ${result.generated}개를 만들었습니다.`, error: false });
+      onDone({ text: result.skipped ? `${t("건너뜀", "Skipped")}: ${result.reason ?? ""}` : t(`후보 ${result.generated}개를 만들었습니다.`, `Generated ${result.generated} candidate(s).`), error: false });
     } catch (error) {
       onDone({ text: errorMessage(error), error: true });
     } finally {
@@ -86,7 +91,7 @@ function GenerateBar({ prds, ready, onDone }: { prds: string[]; ready: boolean; 
         </datalist>
       </div>
       <ActionButton variant="neutralSolid" size="medium" loading={busy} disabled={busy || !ready || !prds.includes(prd)} onClick={() => void generate()}>
-        후보 만들기
+        {t("후보 만들기", "Generate")}
       </ActionButton>
     </HStack>
   );
@@ -108,7 +113,7 @@ export function FlowsScreen() {
     setBusy(true);
     try {
       const { confirmed } = await api.confirmFlows(ids);
-      setMessage({ text: `플로우 ${confirmed}개를 확정했습니다. 확정한 플로우만 다음 점검에 포함합니다.`, error: false });
+      setMessage({ text: t(`플로우 ${confirmed}개를 확정했습니다. 확정한 플로우만 다음 점검에 포함합니다.`, `Confirmed ${confirmed} flow(s). Only confirmed flows run in the next check.`), error: false });
       setSelected([]);
       await state.reload();
     } catch (error) {
@@ -122,7 +127,7 @@ export function FlowsScreen() {
     setRunning(true);
     try {
       const { runId } = await api.startRun({ kind: "dev", devices: "all", flowsOnly: true });
-      setMessage({ text: `플로우 점검을 시작했습니다. (${runId})`, error: false });
+      setMessage({ text: `${t("플로우 점검을 시작했습니다.", "Flow check started.")} (${runId})`, error: false });
     } catch (error) {
       setMessage({ text: errorMessage(error), error: true });
     } finally {
@@ -135,8 +140,8 @@ export function FlowsScreen() {
       <Callout tone="critical" description={state.error} />
     ) : (
       <HStack gap="x2" justify="center" py="x8">
-        <ProgressCircle aria-label="불러오는 중" />
-        <Text color="fg.neutralMuted">불러오는 중</Text>
+        <ProgressCircle aria-label={t("불러오는 중", "Loading")} />
+        <Text color="fg.neutralMuted">{t("불러오는 중", "Loading")}</Text>
       </HStack>
     );
   }
@@ -144,17 +149,20 @@ export function FlowsScreen() {
 
   return (
     <VStack gap="x4" className="baselines-page">
-      <section className="baselines-card" aria-label="후보 만들기">
+      <section className="baselines-card" aria-label={t("후보 만들기", "Generate candidates")}>
         <VStack gap="x0_5">
           <Text as="h2" textStyle="t5Bold">
-            플로우 후보 만들기
+            {t("플로우 후보 만들기", "Generate flow candidates")}
           </Text>
           <Text textStyle="t3Regular" color="fg.neutralSubtle">
-            PRD를 고르면 LLM이 버튼을 눌러 확인할 플로우 후보를 만들어요. 통과·실패는 점검기가 정해요.
+            {t(
+              "PRD를 고르면 LLM이 버튼을 눌러 확인할 플로우 후보를 만들어요. 통과·실패는 점검기가 정해요.",
+              "Pick a PRD and an LLM drafts flow candidates that tap through the app. The checker, not the LLM, decides pass or fail.",
+            )}
           </Text>
         </VStack>
-        {!prdRootSet ? <Callout tone="warning" description="FLOW_PRD_ROOT(프론트 체크아웃 경로)가 없어 PRD를 고를 수 없어요." /> : null}
-        {prdRootSet && !llmConfigured ? <Callout tone="warning" description="FLOW_LLM_API_KEY·FLOW_LLM_BASE_URL·FLOW_LLM_MODEL이 없어 후보를 만들 수 없어요. 확정된 플로우 점검은 그대로 돌아요." /> : null}
+        {!prdRootSet ? <Callout tone="warning" description={t("FLOW_PRD_ROOT(프론트 체크아웃 경로)가 없어 PRD를 고를 수 없어요.", "FLOW_PRD_ROOT (front-end checkout path) is not set, so no PRD can be picked.")} /> : null}
+        {prdRootSet && !llmConfigured ? <Callout tone="warning" description={t("FLOW_LLM_API_KEY·FLOW_LLM_BASE_URL·FLOW_LLM_MODEL이 없어 후보를 만들 수 없어요. 확정된 플로우 점검은 그대로 돌아요.", "FLOW_LLM_API_KEY, FLOW_LLM_BASE_URL or FLOW_LLM_MODEL is missing, so candidates cannot be generated. Confirmed flows still run.")} /> : null}
         <GenerateBar
           prds={prds}
           ready={prdRootSet && llmConfigured}
@@ -174,41 +182,44 @@ export function FlowsScreen() {
 
       {message ? <Callout tone={message.error ? "critical" : "positive"} description={message.text} /> : null}
 
-      <section className="baselines-card" aria-label="플로우 후보">
+      <section className="baselines-card" aria-label={t("플로우 후보", "Flow candidates")}>
         <div className="flows-header">
           <Text as="h3" textStyle="t4Bold">
-            {`후보 ${candidates.length}개`}
+            {t(`후보 ${candidates.length}개`, `${candidates.length} candidates`)}
           </Text>
           <HStack gap="x2" wrap="wrap">
             <ActionButton variant="neutralSolid" size="medium" loading={busy} disabled={busy || chosen.length === 0} onClick={() => void confirm(chosen)}>
-              고른 {chosen.length}개 확정
+              {t(`고른 ${chosen.length}개 확정`, `Confirm ${chosen.length} selected`)}
             </ActionButton>
             <ActionButton variant="neutralWeak" size="medium" disabled={busy || confirmable.length === 0} onClick={() => void confirm()}>
-              플로우 후보 확정
+              {t("플로우 후보 확정", "Confirm all candidates")}
             </ActionButton>
           </HStack>
         </div>
-        {candidates.length === 0 ? <Text color="fg.neutralMuted">확정할 후보가 없어요.</Text> : null}
+        {candidates.length === 0 ? <Text color="fg.neutralMuted">{t("확정할 후보가 없어요.", "No candidates to confirm.")}</Text> : null}
         {candidates.map((flow) => (
           <FlowCard key={`${flow.prd}:${flow.id}`} flow={flow}>
             {confirmable.includes(flow.id) ? (
-              <Checkbox label="" aria-label={`${flow.name} 고르기`} size="medium" checked={chosen.includes(flow.id)} onCheckedChange={() => toggle(flow.id)} />
+              <Checkbox label="" aria-label={t(`${flow.name} 고르기`, `Select ${flow.name}`)} size="medium" checked={chosen.includes(flow.id)} onCheckedChange={() => toggle(flow.id)} />
             ) : null}
           </FlowCard>
         ))}
       </section>
 
-      <section className="baselines-card" aria-label="확정 플로우">
+      <section className="baselines-card" aria-label={t("확정 플로우", "Confirmed flows")}>
         <div className="flows-header">
           <Text as="h3" textStyle="t4Bold">
-            {`확정 ${ready.length}개 · 홈에서 시작해 버튼·탭을 눌러 확인해요`}
+            {t(`확정 ${ready.length}개 · 홈에서 시작해 버튼·탭을 눌러 확인해요`, `${ready.length} confirmed · each starts at home and taps buttons and tabs`)}
           </Text>
           <ActionButton variant="neutralSolid" size="medium" loading={running} disabled={running || ready.length === 0} onClick={() => void runFlowsOnly()}>
-            플로우만 점검
+            {t("플로우만 점검", "Run flows only")}
           </ActionButton>
         </div>
         <Text textStyle="t3Regular" color="fg.neutralSubtle">
-          설치 없이 지금 깔린 dev 앱으로 연결된 기기 전부에서 돌아요. 진행은 오른쪽 패널에 스텝별로 보여요.
+          {t(
+            "설치 없이 지금 깔린 dev 앱으로 연결된 기기 전부에서 돌아요. 진행은 오른쪽 패널에 스텝별로 보여요.",
+            "Runs on every connected device with the dev app already installed, without reinstalling. Progress shows step by step in the right panel.",
+          )}
         </Text>
         {ready.map((flow) => (
           <FlowCard key={flow.id} flow={flow} />

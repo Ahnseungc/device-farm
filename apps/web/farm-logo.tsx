@@ -1,7 +1,9 @@
+import { t } from "./i18n";
+
 /** 디바이스팜 로고. 초록 바탕에 기기(폰)와 거기서 자라는 새싹 — "실기기를 키우는 팜". */
 export function FarmLogoMark({ size = 32 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 32 32" role="img" aria-label="디바이스팜" focusable="false">
+    <svg width={size} height={size} viewBox="0 0 32 32" role="img" aria-label={t("디바이스팜", "Device Farm")} focusable="false">
       <defs>
         <linearGradient id="farm-logo-bg" x1="4" y1="2" x2="28" y2="30" gradientUnits="userSpaceOnUse">
           <stop offset="0" stopColor="#C9F2D4" />

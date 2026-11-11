@@ -2,6 +2,7 @@ import { useState } from "react";
 import { HStack, Text, VStack } from "@seed-design/react";
 
 import { api, candidateImageUrl, errorMessage, usePoll } from "./api-client";
+import { t } from "./i18n";
 import { ActionButton } from "./seed-design/ui/action-button";
 import { Badge } from "./seed-design/ui/badge";
 import { Callout } from "./seed-design/ui/callout";
@@ -13,7 +14,7 @@ import "./baselines.css";
 /** 후보 키 `model|osVersion|scenario`에서 기기 부분과 화면 이름을 나눈다. */
 function splitKey(key: string): { device: string; scenario: string } {
   const parts = key.split("|");
-  if (parts.length < 3) return { device: "기타", scenario: key };
+  if (parts.length < 3) return { device: t("기타", "Other"), scenario: key };
   return { device: `${parts[0]} · ${parts[1]}`, scenario: parts.slice(2).join("|") };
 }
 
@@ -41,7 +42,7 @@ export function BaselinesScreen() {
     setBusy(true);
     try {
       const { confirmed } = await api.confirmBaselines(names);
-      setMessage({ text: `기준 화면 ${confirmed}개를 확정했습니다.`, error: false });
+      setMessage({ text: t(`기준 화면 ${confirmed}개를 확정했습니다.`, `Confirmed ${confirmed} baseline(s).`), error: false });
       setSelected([]);
       await pending.reload();
     } catch (error) {
@@ -56,10 +57,10 @@ export function BaselinesScreen() {
       <div className="baselines-toolbar">
         <VStack gap="x0_5">
           <Text as="h2" textStyle="t5Bold">
-            기준 후보
+            {t("기준 후보", "Baseline candidates")}
           </Text>
           <Text textStyle="t3Regular" color="fg.neutralSubtle">
-            {keys.length > 0 ? `후보 ${keys.length}개 · 고른 ${chosen.length}개` : "확정할 후보가 없어요"}
+            {keys.length > 0 ? t(`후보 ${keys.length}개 · 고른 ${chosen.length}개`, `${keys.length} candidates · ${chosen.length} selected`) : t("확정할 후보가 없어요", "Nothing to confirm")}
           </Text>
         </VStack>
         <HStack gap="x2" wrap="wrap">
@@ -70,7 +71,7 @@ export function BaselinesScreen() {
             disabled={busy || chosen.length === 0}
             onClick={() => void confirm(chosen)}
           >
-            고른 {chosen.length}개 확정
+            {t(`고른 ${chosen.length}개 확정`, `Confirm ${chosen.length} selected`)}
           </ActionButton>
           <ActionButton
             variant="neutralWeak"
@@ -78,7 +79,7 @@ export function BaselinesScreen() {
             disabled={busy || keys.length === 0}
             onClick={() => void confirm()}
           >
-            전부 확정
+            {t("전부 확정", "Confirm all")}
           </ActionButton>
         </HStack>
       </div>
@@ -90,8 +91,8 @@ export function BaselinesScreen() {
 
       {pending.data === undefined && !pending.error ? (
         <HStack gap="x2" justify="center" py="x8">
-          <ProgressCircle aria-label="불러오는 중" />
-          <Text color="fg.neutralMuted">불러오는 중</Text>
+          <ProgressCircle aria-label={t("불러오는 중", "Loading")} />
+          <Text color="fg.neutralMuted">{t("불러오는 중", "Loading")}</Text>
         </HStack>
       ) : null}
 
@@ -99,20 +100,23 @@ export function BaselinesScreen() {
         <div className="baselines-card">
           <ResultSection
             size="medium"
-            title="확정할 후보가 없어요"
-            description={"점검을 한 번 돌리면 기기별 후보가 생겨요.\n후보를 확인하고 기준 화면으로 확정해 주세요."}
+            title={t("확정할 후보가 없어요", "Nothing to confirm")}
+            description={t(
+              "점검을 한 번 돌리면 기기별 후보가 생겨요.\n후보를 확인하고 기준 화면으로 확정해 주세요.",
+              "Run a check once to get candidates per device.\nReview them and confirm them as baselines.",
+            )}
           />
         </div>
       ) : null}
 
       {[...groupByDevice(keys)].map(([device, deviceKeys]) => (
-        <section key={device} className="baselines-card" aria-label={`${device} 기준 후보`}>
+        <section key={device} className="baselines-card" aria-label={t(`${device} 기준 후보`, `${device} baseline candidates`)}>
           <HStack gap="x2" align="center">
             <Text as="h3" textStyle="t4Bold">
               {device}
             </Text>
             <Badge tone="informative" variant="weak">
-              {`${deviceKeys.length}개`}
+              {t(`${deviceKeys.length}개`, String(deviceKeys.length))}
             </Badge>
           </HStack>
           <div className="baselines-grid">
@@ -124,7 +128,7 @@ export function BaselinesScreen() {
                   {/* 이미지는 마우스 편의용 토글. 키보드·스크린 리더는 아래 체크박스를 쓴다. */}
                   <img
                     src={candidateImageUrl(key)}
-                    alt={`${scenario} 후보 화면`}
+                    alt={t(`${scenario} 후보 화면`, `${scenario} candidate screen`)}
                     className="baselines-shot"
                     onClick={() => toggle(key)}
                   />

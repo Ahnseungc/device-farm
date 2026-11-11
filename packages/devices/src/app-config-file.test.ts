@@ -5,7 +5,7 @@ import path from "node:path";
 
 import { sampleApp } from "@device-farm/core/config/sample-app";
 
-import { loadAppConfig, normalizeAppConfig, resolveAppConfigFile } from "./app-config-file";
+import { loadAppConfig, normalizeAppConfig, resolveAppConfigFile, withLocaleEnv } from "./app-config-file";
 
 const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../..");
 const example = path.join(repoRoot, "farm.config.example.ts");
@@ -42,5 +42,16 @@ const raw = normalizeAppConfig({ name: "Raw", appIds: { dev: "a.dev", prod: "a" 
 assert.deepEqual(raw.loginPaths, ["/login"]);
 assert.deepEqual(raw.tabPaths, { 홈: "/" });
 assert.ok(raw.guard.forbiddenApiPatterns.length > 0);
+
+// 화면 언어: 기본 ko, 설정의 locale, FARM_LOCALE이 이긴다. 모르는 값은 무시
+assert.equal(raw.locale, "ko");
+assert.equal(normalizeAppConfig({ name: "En", appIds: { dev: "a.dev", prod: "a" }, homePath: "/", homeTabName: "Home", tabPaths: {}, locale: "en" }).locale, "en");
+assert.equal(withLocaleEnv(raw, { FARM_LOCALE: "en" }).locale, "en");
+assert.equal(withLocaleEnv(raw, { FARM_LOCALE: "fr" }).locale, "ko");
+assert.equal(withLocaleEnv(raw, {}), raw);
+{
+  const app = await loadAppConfig(example, () => undefined, { FARM_LOCALE: "EN" });
+  assert.equal(app.locale, "en");
+}
 
 console.log("app-config-file ok");

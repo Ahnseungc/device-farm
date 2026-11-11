@@ -4,6 +4,7 @@ import { Text, VStack } from "@seed-design/react";
 import type { BuildKind, DeviceRun, DeviceState } from "@device-farm/core/device/types";
 
 import { api, errorMessage, usePoll, type DeviceWithState } from "./api-client";
+import { t } from "./i18n";
 import { LiveView } from "./live-view";
 import { ActionButton } from "./seed-design/ui/action-button";
 import { Badge, type BadgeProps } from "./seed-design/ui/badge";
@@ -14,12 +15,13 @@ import { SegmentedControl, SegmentedControlItem } from "./seed-design/ui/segment
 import { TextField, TextFieldInput } from "./seed-design/ui/text-field";
 import "./devices.css";
 
-export const deviceStateLabel = {
-  idle: "대기",
-  checking: "점검 중",
-  controlling: "조작 중",
-  offline: "연결 끊김",
-} as const satisfies Record<DeviceState, string>;
+export const deviceStateLabel = (state: DeviceState): string =>
+  ({
+    idle: t("대기", "Idle"),
+    checking: t("점검 중", "Checking"),
+    controlling: t("조작 중", "In control"),
+    offline: t("연결 끊김", "Offline"),
+  })[state];
 
 const deviceStateTone = {
   idle: "neutral",
@@ -33,7 +35,7 @@ const buildKinds = ["dev", "prod"] as const satisfies readonly BuildKind[];
 export function StateChip({ state }: { state: DeviceState }) {
   return (
     <Badge tone={deviceStateTone[state]} variant="weak" size="medium">
-      {deviceStateLabel[state]}
+      {deviceStateLabel(state)}
     </Badge>
   );
 }
@@ -44,7 +46,7 @@ function currentStep(run: DeviceRun | null | undefined, deviceId: string): strin
   const outcome = run.outcomes.find((item) => item.device.id === deviceId);
   if (!outcome || outcome.status !== "running") return null;
   const last = outcome.screens.at(-1);
-  return last ? `${last.scenario} 확인 중` : "준비 중";
+  return last ? t(`${last.scenario} 확인 중`, `Checking ${last.scenario}`) : t("준비 중", "Preparing");
 }
 
 interface DevicesScreenProps {
@@ -64,8 +66,8 @@ export function DevicesScreen({ onOpen }: DevicesScreenProps) {
         <div className="devices-card">
           <ResultSection
             size="medium"
-            title="연결된 기기가 없어요"
-            description={"USB로 기기를 연결하면\n여기에 바로 나타나요."}
+            title={t("연결된 기기가 없어요", "No devices connected")}
+            description={t("USB로 기기를 연결하면\n여기에 바로 나타나요.", "Connect a device over USB\nand it shows up here.")}
           />
         </div>
       ) : null}
@@ -93,7 +95,7 @@ function DeviceCard({ device, step, onOpen }: DeviceCardProps) {
         {device.state === "offline" ? (
           <div className="devices-media-empty">
             <Text textStyle="t3Medium" color="fg.neutralSubtle">
-              화면 없음
+              {t("화면 없음", "No screen")}
             </Text>
           </div>
         ) : (
@@ -110,7 +112,7 @@ function DeviceCard({ device, step, onOpen }: DeviceCardProps) {
             {device.platform === "ios" ? "iOS" : "Android"} {device.osVersion}
           </Text>
           <Text as="p" textStyle="t3Regular" color="fg.neutralSubtle">
-            설치 버전 {device.appVersion ?? "없음"}
+            {t("설치 버전", "Installed")} {device.appVersion ?? t("없음", "none")}
           </Text>
         </VStack>
         {step ? (
@@ -120,7 +122,7 @@ function DeviceCard({ device, step, onOpen }: DeviceCardProps) {
         ) : null}
         <div className="devices-card-action">
           <ActionButton variant="neutralWeak" size="small" onClick={() => onOpen(device.id)}>
-            크게 보기
+            {t("크게 보기", "Open")}
           </ActionButton>
         </div>
       </VStack>
@@ -147,7 +149,7 @@ function RunForm({ devices, onStarted }: RunFormProps) {
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!version.trim()) {
-      setMessage({ text: "버전을 입력해 주세요.", error: true });
+      setMessage({ text: t("버전을 입력해 주세요.", "Enter a version."), error: true });
       return;
     }
     setPending(true);
@@ -158,7 +160,7 @@ function RunForm({ devices, onStarted }: RunFormProps) {
         devices: selected.length > 0 ? selected : "all",
         buttonCheck,
       });
-      setMessage({ text: `점검을 시작했습니다. (${runId})`, error: false });
+      setMessage({ text: `${t("점검을 시작했습니다.", "Check started.")} (${runId})`, error: false });
       onStarted();
     } catch (error) {
       setMessage({ text: errorMessage(error), error: true });
@@ -168,14 +170,14 @@ function RunForm({ devices, onStarted }: RunFormProps) {
   }
 
   return (
-    <form className="devices-card devices-form" onSubmit={(event) => void submit(event)} aria-label="점검 실행">
+    <form className="devices-card devices-form" onSubmit={(event) => void submit(event)} aria-label={t("점검 실행", "Run check")}>
       <Text as="h2" textStyle="t6Bold" color="fg.neutral">
-        점검 실행
+        {t("점검 실행", "Run check")}
       </Text>
       <div className="devices-form-row">
         <VStack gap="x2">
           <Text id="devices-build-label" textStyle="t5Medium" color="fg.neutral">
-            빌드
+            {t("빌드", "Build")}
           </Text>
           <SegmentedControl
             aria-labelledby="devices-build-label"
@@ -190,13 +192,13 @@ function RunForm({ devices, onStarted }: RunFormProps) {
           </SegmentedControl>
         </VStack>
         <div className="devices-version">
-          <TextField label="버전" value={version} onValueChange={({ value }) => setVersion(value)}>
+          <TextField label={t("버전", "Version")} value={version} onValueChange={({ value }) => setVersion(value)}>
             <TextFieldInput placeholder="1.8.0" />
           </TextField>
         </div>
       </div>
       {devices.length > 0 ? (
-        <CheckboxGroup label="기기" indicator="고르지 않으면 전체">
+        <CheckboxGroup label={t("기기", "Devices")} indicator={t("고르지 않으면 전체", "All if none selected")}>
           {devices.map((device) => (
             <Checkbox
               key={device.id}
@@ -208,14 +210,17 @@ function RunForm({ devices, onStarted }: RunFormProps) {
         </CheckboxGroup>
       ) : null}
       <VStack gap="x1">
-        <Checkbox label="버튼 눌러보기" checked={buttonCheck} onCheckedChange={() => setButtonCheck((current) => !current)} />
+        <Checkbox label={t("버튼 눌러보기", "Button crawl")} checked={buttonCheck} onCheckedChange={() => setButtonCheck((current) => !current)} />
         <Text textStyle="t3Regular" color="fg.neutralSubtle">
-          화면마다 버튼·링크를 최대 12개 눌러 반응·에러를 보고, 어디로 가는지 화면 지도에 모아요. 쓰기 요청은 막아요. 점검 시간이 길어져요.
+          {t(
+            "화면마다 버튼·링크를 최대 12개 눌러 반응·에러를 보고, 어디로 가는지 화면 지도에 모아요. 쓰기 요청은 막아요. 점검 시간이 길어져요.",
+            "Presses up to 12 buttons/links per screen, records reactions and errors, and collects where each one goes into the screen map. Write requests are blocked. The check takes longer.",
+          )}
         </Text>
       </VStack>
       <div className="devices-card-action">
         <ActionButton type="submit" variant="neutralSolid" size="medium" loading={pending} disabled={pending}>
-          점검 실행
+          {t("점검 실행", "Run check")}
         </ActionButton>
       </div>
       {message ? (

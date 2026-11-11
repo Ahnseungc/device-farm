@@ -5,6 +5,7 @@ import type { LogEntry } from "@device-farm/core/device/types";
 import type { QaCheck } from "@device-farm/core/qa/rules";
 
 import { errorMessage, fetchLogs, joinPath, resultFileUrl } from "./api-client";
+import { dateLocale, plural, t } from "./i18n";
 import type { FailedCell } from "./results-screen";
 import { Badge } from "./seed-design/ui/badge";
 import { Callout } from "./seed-design/ui/callout";
@@ -48,7 +49,7 @@ export function FailureDetail({ cell, onClose }: FailureDetailProps) {
     <DialogRoot open size="large" onOpenChange={(open) => !open && onClose()}>
       <DialogContent
         title={`${screen.scenario} · ${outcome.device.model} ${outcome.device.osVersion}`}
-        description="실패 상세"
+        description={t("실패 상세", "Failure details")}
       >
         <DialogBody>
           <VStack gap="x5" align="stretch" width="full">
@@ -56,27 +57,27 @@ export function FailureDetail({ cell, onClose }: FailureDetailProps) {
             {screen.checks ? <QaCheckList checks={screen.checks} /> : null}
 
             <div className="failure-images">
-              <Figure title="기준" src={file(bundleFiles.baseline)} />
-              <Figure title="이번" src={screenshot ? resultFileUrl(screenshot) : null} />
-              <Figure title="차이" src={file(bundleFiles.diff)} />
+              <Figure title={t("기준", "Baseline")} src={file(bundleFiles.baseline)} />
+              <Figure title={t("이번", "This run")} src={screenshot ? resultFileUrl(screenshot) : null} />
+              <Figure title={t("차이", "Diff")} src={file(bundleFiles.diff)} />
             </div>
 
             <VStack gap="x2" align="stretch">
               <Text as="h3" textStyle="t4Bold">
-                영상
+                {t("영상", "Video")}
               </Text>
               {logDir ? (
                 <video className="failure-video" src={file(bundleFiles.video) ?? undefined} controls>
-                  영상이 없습니다.
+                  {t("영상이 없습니다.", "No video.")}
                 </video>
               ) : (
-                <Text color="fg.neutralMuted">영상이 없습니다.</Text>
+                <Text color="fg.neutralMuted">{t("영상이 없습니다.", "No video.")}</Text>
               )}
             </VStack>
 
             <VStack gap="x2" align="stretch">
               <Text as="h3" textStyle="t4Bold">
-                로그
+                {t("로그", "Logs")}
               </Text>
               <LogList logs={logs} error={logError} hasDir={Boolean(logDir)} />
             </VStack>
@@ -84,7 +85,7 @@ export function FailureDetail({ cell, onClose }: FailureDetailProps) {
         </DialogBody>
         <DialogFooter>
           <HStack gap="x2" justify="flex-end" width="full">
-            <DialogAction variant="neutralWeak">닫기</DialogAction>
+            <DialogAction variant="neutralWeak">{t("닫기", "Close")}</DialogAction>
           </HStack>
         </DialogFooter>
       </DialogContent>
@@ -98,13 +99,13 @@ function QaCheckList({ checks }: { checks: QaCheck[] }) {
   return (
     <VStack gap="x2" align="stretch">
       <Text as="h3" textStyle="t4Bold">
-        {`규칙 ${checks.length}개 · 실패 ${checks.filter((check) => !check.ok).length}개`}
+        {t(`규칙 ${checks.length}개 · 실패 ${checks.filter((check) => !check.ok).length}개`, `${plural(checks.length, "rule")} · ${checks.filter((check) => !check.ok).length} failed`)}
       </Text>
       <ul className="failure-checks">
         {sorted.map((check) => (
           <li key={check.id}>
             <Badge tone={check.ok ? "positive" : "critical"} variant="weak">
-              {check.ok ? "통과" : "실패"}
+              {check.ok ? t("통과", "Passed") : t("실패", "Failed")}
             </Badge>
             <VStack gap="x0_5">
               <Text textStyle="t4Medium">{check.title}</Text>
@@ -128,11 +129,11 @@ function Figure({ title, src }: { title: string; src: string | null }) {
         </Text>
       </figcaption>
       {src && !missing ? (
-        <img src={src} alt={`${title} 화면`} className="failure-shot" onError={() => setMissing(true)} />
+        <img src={src} alt={t(`${title} 화면`, `${title} screen`)} className="failure-shot" onError={() => setMissing(true)} />
       ) : (
         <div className="failure-shot failure-shot-empty">
           <Text textStyle="t3Regular" color="fg.neutralSubtle">
-            없음
+            {t("없음", "None")}
           </Text>
         </div>
       )}
@@ -141,23 +142,23 @@ function Figure({ title, src }: { title: string; src: string | null }) {
 }
 
 function LogList({ logs, error, hasDir }: { logs: LogEntry[] | null; error: string | null; hasDir: boolean }) {
-  if (!hasDir) return <Text color="fg.neutralMuted">로그가 없습니다.</Text>;
+  if (!hasDir) return <Text color="fg.neutralMuted">{t("로그가 없습니다.", "No logs.")}</Text>;
   if (error) return <Callout tone="critical" description={error} />;
   if (!logs) {
     return (
       <HStack gap="x2" align="center">
-        <ProgressCircle aria-label="불러오는 중" />
-        <Text color="fg.neutralMuted">불러오는 중</Text>
+        <ProgressCircle aria-label={t("불러오는 중", "Loading")} />
+        <Text color="fg.neutralMuted">{t("불러오는 중", "Loading")}</Text>
       </HStack>
     );
   }
-  if (logs.length === 0) return <Text color="fg.neutralMuted">로그가 없습니다.</Text>;
+  if (logs.length === 0) return <Text color="fg.neutralMuted">{t("로그가 없습니다.", "No logs.")}</Text>;
   return (
     <ol className="failure-logs">
       {logs.map((entry, index) => (
         <li key={`${entry.at}-${index}`} data-source={entry.source}>
           <span className="failure-log-meta">
-            {new Date(entry.at).toLocaleTimeString("ko-KR")} {entry.source}
+            {new Date(entry.at).toLocaleTimeString(dateLocale())} {entry.source}
           </span>{" "}
           {entry.text}
         </li>

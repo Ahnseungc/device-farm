@@ -11,6 +11,8 @@ import { equalWon, formatWon, numberAt, textHas } from "@device-farm/core/qa/rul
 
 export default defineAppConfig({
   name: "Sample Shop",
+  // 디바이스팜 화면 언어 "ko"(기본)·"en". FARM_LOCALE 환경 변수가 이긴다.
+  locale: "ko",
   // Android 패키지 = iOS 번들 id. 다르면 iosBundleIds로 덮는다.
   appIds: { dev: "com.example.shop.dev", prod: "com.example.shop" },
   // 앱 WebView가 여는 웹 주소. 비우면 .env의 FARM_WEB_ORIGIN_DEV·FARM_WEB_ORIGIN_PROD

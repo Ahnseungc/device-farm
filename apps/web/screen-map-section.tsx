@@ -7,15 +7,17 @@ import { api, usePoll } from "./api-client";
 import { Badge, type BadgeProps } from "./seed-design/ui/badge";
 import { Callout } from "./seed-design/ui/callout";
 import { useAppConfig } from "./app-context";
+import { t } from "./i18n";
 import { buildScreenTree, type ScreenNode } from "./screen-map-tree";
 import "./screen-map.css";
 
 /** 카드 안에 개수로만 보이는 간선(다른 화면으로 가지 않는 것) */
 const leafKinds = ["popup", "dead", "error"] as const satisfies readonly MapEdgeKind[];
-const kindLabels = { navigate: "이동", popup: "팝업", dead: "반응 없음", error: "에러" } as const satisfies Record<MapEdgeKind, string>;
+const kindLabel = (kind: MapEdgeKind): string =>
+  ({ navigate: t("이동", "Navigate"), popup: t("팝업", "Popup"), dead: t("반응 없음", "No response"), error: t("에러", "Error") })[kind];
 const kindTones = { navigate: "informative", popup: "neutral", dead: "warning", error: "critical" } as const satisfies Record<MapEdgeKind, BadgeProps["tone"]>;
-const roleLabels = { button: "버튼", link: "링크" } as const satisfies Record<MapEdge["role"], string>;
-const screenNotes = { repeated: "위에서 펼침", unvisited: "아직 안 눌러 봄" } as const;
+const roleLabel = (role: MapEdge["role"]): string => (role === "link" ? t("링크", "Link") : t("버튼", "Button"));
+const quoted = (name: string) => t(`「${name}」`, `“${name}”`);
 
 function leafEdges(node: ScreenNode): MapEdge[] {
   return node.edges.filter((item) => !item.child).map((item) => item.edge);
@@ -25,7 +27,7 @@ function leafEdges(node: ScreenNode): MapEdge[] {
 function ScreenCard({ node, title }: { node: ScreenNode; title?: string }) {
   const [open, setOpen] = useState(false);
   const leaves = leafEdges(node);
-  const note = node.repeated ? screenNotes.repeated : node.unvisited ? screenNotes.unvisited : null;
+  const note = node.repeated ? t("위에서 펼침", "Expanded above") : node.unvisited ? t("아직 안 눌러 봄", "Not crawled yet") : null;
   return (
     <div className={note ? "smap-card smap-card-muted" : "smap-card"}>
       <Text textStyle="t4Bold">{node.path}</Text>
@@ -38,7 +40,7 @@ function ScreenCard({ node, title }: { node: ScreenNode; title?: string }) {
               const count = leaves.filter((edge) => edge.kind === kind).length;
               return count > 0 ? (
                 <Badge key={kind} tone={kindTones[kind]} variant="weak">
-                  {`${kindLabels[kind]} ${count}`}
+                  {`${kindLabel(kind)} ${count}`}
                 </Badge>
               ) : null;
             })}
@@ -50,7 +52,7 @@ function ScreenCard({ node, title }: { node: ScreenNode; title?: string }) {
           {leaves.map((edge) => (
             <li key={`${edge.role}:${edge.name}`}>
               <Text textStyle="t2Regular">
-                {`${kindLabels[edge.kind]} · ${roleLabels[edge.role]} 「${edge.name}」${edge.texts ? ` → ${edge.texts[0]}` : ""}${edge.message && edge.kind === "error" ? ` (${edge.message})` : ""}`}
+                {`${kindLabel(edge.kind)} · ${roleLabel(edge.role)} ${quoted(edge.name)}${edge.texts ? ` → ${edge.texts[0]}` : ""}${edge.message && edge.kind === "error" ? ` (${edge.message})` : ""}`}
               </Text>
             </li>
           ))}
@@ -71,7 +73,7 @@ function TreeNode({ node, title }: { node: ScreenNode; title?: string }) {
           {children.map(({ edge, child }) => (
             <div key={`${edge.role}:${edge.name}`} className="smap-child">
               <span className="smap-label">
-                <Text textStyle="t2Regular" color="fg.neutralMuted">{`${roleLabels[edge.role]} 「${edge.name}」`}</Text>
+                <Text textStyle="t2Regular" color="fg.neutralMuted">{`${roleLabel(edge.role)} ${quoted(edge.name)}`}</Text>
               </span>
               {child ? <TreeNode node={child} title={edge.texts?.[0]} /> : null}
             </div>
@@ -105,15 +107,18 @@ export function ScreenMapSection() {
   const roots = buildScreenTree(edges, homePath);
 
   return (
-    <section className="baselines-card" aria-label="화면 지도">
+    <section className="baselines-card" aria-label={t("화면 지도", "Screen map")}>
       <Text as="h3" textStyle="t4Bold">
-        {`화면 지도 · 화면 ${screenCount}개`}
+        {t(`화면 지도 · 화면 ${screenCount}개`, `Screen map · ${screenCount} screens`)}
       </Text>
       <Text textStyle="t3Regular" color="fg.neutralSubtle">
-        「버튼 눌러보기」를 켜고 점검하면 모여요. 위 카드에서 내려온 선의 이름이 누른 버튼, 그 아래 카드가 도착 화면이에요. 카드의 팝업·반응 없음·에러를 누르면 그 버튼이 보여요.
+        {t(
+          "「버튼 눌러보기」를 켜고 점검하면 모여요. 위 카드에서 내려온 선의 이름이 누른 버튼, 그 아래 카드가 도착 화면이에요. 카드의 팝업·반응 없음·에러를 누르면 그 버튼이 보여요.",
+          "Collected when you run a check with “Button crawl” on. The label on each line is the button that was tapped, and the card below it is where it landed. Click a card's popup / no response / error badges to see those buttons.",
+        )}
       </Text>
       {map.error ? <Callout tone="critical" description={map.error} /> : null}
-      {map.data && roots.length === 0 ? <Text color="fg.neutralMuted">아직 모은 화면이 없어요.</Text> : null}
+      {map.data && roots.length === 0 ? <Text color="fg.neutralMuted">{t("아직 모은 화면이 없어요.", "No screens collected yet.")}</Text> : null}
       {roots.length > 0 ? (
         <div className="smap-trees">
           {roots.map((root) => (

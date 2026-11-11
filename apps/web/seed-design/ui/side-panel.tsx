@@ -7,6 +7,8 @@ import { Icon, SidePanel as SeedSidePanel } from "@seed-design/react";
 import type * as React from "react";
 import { forwardRef } from "react";
 
+import { t } from "../../i18n";
+
 export interface SidePanelRootProps extends SeedSidePanel.RootProps {}
 
 /**
@@ -56,7 +58,7 @@ export const SidePanelContent = forwardRef<HTMLDivElement, SidePanelContentProps
               {title && <SeedSidePanel.Title>{title}</SeedSidePanel.Title>}
               {description && <SeedSidePanel.Description>{description}</SeedSidePanel.Description>}
               {showCloseButton && (
-                <SeedSidePanel.CloseButton aria-label="닫기">
+                <SeedSidePanel.CloseButton aria-label={t("닫기", "Close")}>
                   <Icon svg={<IconXmarkLine />} />
                 </SeedSidePanel.CloseButton>
               )}

@@ -9,6 +9,8 @@ import type * as React from "react";
 
 import { ActionButton, type ActionButtonProps } from "./action-button";
 
+import { t } from "../../i18n";
+
 export interface DialogRootProps extends Dialog.RootProps {
   /**
    * @default false
@@ -65,7 +67,7 @@ export const DialogContent = forwardRef<HTMLDivElement, DialogContentProps>(
               {title && <Dialog.Title>{title}</Dialog.Title>}
               {description && <Dialog.Description>{description}</Dialog.Description>}
               {showCloseButton && (
-                <Dialog.CloseButton aria-label="닫기">
+                <Dialog.CloseButton aria-label={t("닫기", "Close")}>
                   <Icon svg={<IconXmarkLine />} />
                 </Dialog.CloseButton>
               )}

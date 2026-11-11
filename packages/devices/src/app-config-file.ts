@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { defineAppConfig, type AppConfig, type AppConfigInput } from "@device-farm/core/config/app-config";
+import { defineAppConfig, isFarmLocale, type AppConfig, type AppConfigInput } from "@device-farm/core/config/app-config";
 
 /**
  * 앱 설정 파일 읽기. 서버·CLI·MCP가 시작할 때 한 번 부르고, 받은 값을 인자로 넘긴다.
@@ -40,9 +40,15 @@ export function normalizeAppConfig(value: unknown, source = "앱 설정"): AppCo
   return isDefined(value) ? value : defineAppConfig(value);
 }
 
-export async function loadAppConfig(file = resolveAppConfigFile(), log: (line: string) => void = console.log): Promise<AppConfig> {
+/** `FARM_LOCALE`(ko·en)이 있으면 설정 파일의 `locale`보다 먼저 쓴다. 모르는 값은 무시한다 */
+export function withLocaleEnv(config: AppConfig, env: NodeJS.ProcessEnv = process.env): AppConfig {
+  const fromEnv = env.FARM_LOCALE?.trim().toLowerCase();
+  return isFarmLocale(fromEnv) ? { ...config, locale: fromEnv } : config;
+}
+
+export async function loadAppConfig(file = resolveAppConfigFile(), log: (line: string) => void = console.log, env: NodeJS.ProcessEnv = process.env): Promise<AppConfig> {
   const loaded = (await import(/* @vite-ignore */ pathToFileURL(file).href)) as { default?: unknown };
-  const config = normalizeAppConfig(loaded.default, file);
+  const config = withLocaleEnv(normalizeAppConfig(loaded.default, file), env);
   if (path.basename(file) === "farm.config.example.ts") log(`[farm] farm.config.ts가 없어 예시 앱 설정(${file})으로 시작합니다.`);
   return config;
 }

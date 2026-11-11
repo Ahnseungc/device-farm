@@ -11,31 +11,41 @@ import { DevicesScreen } from "./devices-screen";
 import { ExploreScreen } from "./explore-screen";
 import { FarmLogoMark } from "./farm-logo";
 import { FlowsScreen } from "./flows-screen";
+import { setLocale, t } from "./i18n";
 import { PolicyScreen } from "./policy-screen";
 import { ResultsScreen } from "./results-screen";
 import { RunProgressPanel } from "./run-progress-panel";
 
-const tabs = [
-  { id: "devices", label: "기기" },
-  { id: "results", label: "결과" },
-  { id: "baselines", label: "기준 화면" },
-  { id: "flows", label: "플로우" },
-  { id: "explore", label: "탐색" },
-  { id: "chaos", label: "카오스" },
-  { id: "policy", label: "정책" },
-] as const;
+const tabIds = ["devices", "results", "baselines", "flows", "explore", "chaos", "policy"] as const;
 
-type TabId = (typeof tabs)[number]["id"];
+type TabId = (typeof tabIds)[number];
+
+const tabLabel = (id: TabId): string =>
+  ({
+    devices: t("기기", "Devices"),
+    results: t("결과", "Results"),
+    baselines: t("기준 화면", "Baselines"),
+    flows: t("플로우", "Flows"),
+    explore: t("탐색", "Explore"),
+    chaos: t("카오스", "Chaos"),
+    policy: t("정책", "Policy"),
+  })[id];
 
 /** 앱 설정을 한 번 받은 뒤 화면을 그린다. 못 받으면 이유를 보여 준다 */
 export function App() {
   const [app, setApp] = useState<PublicAppConfig | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
-    api.app().then(setApp, (reason: unknown) => setError(errorMessage(reason)));
+    api.app().then(
+      (loaded) => {
+        setLocale(loaded.locale ?? "ko");
+        setApp(loaded);
+      },
+      (reason: unknown) => setError(errorMessage(reason)),
+    );
   }, []);
-  if (error) return <p className="farm-error">앱 설정을 읽지 못했습니다: {error}</p>;
-  if (!app) return <p className="farm-note">불러오는 중</p>;
+  if (error) return <p className="farm-error">{t("앱 설정을 읽지 못했습니다", "Could not read the app config")}: {error}</p>;
+  if (!app) return <p className="farm-note">{t("불러오는 중", "Loading")}</p>;
   return (
     <AppConfigProvider value={app}>
       <FarmShell appName={app.name} />
@@ -47,7 +57,7 @@ function FarmShell({ appName }: { appName: string }) {
   const [tab, setTab] = useState<TabId>("devices");
   const [openDeviceId, setOpenDeviceId] = useState<string | null>(null);
   useEffect(() => {
-    document.title = `디바이스팜 · ${appName}`;
+    document.title = `${t("디바이스팜", "Device Farm")} · ${appName}`;
   }, [appName]);
 
   return (
@@ -56,8 +66,8 @@ function FarmShell({ appName }: { appName: string }) {
         <div className="farm-sidebar-logo">
           <FarmLogoMark />
         </div>
-        <nav aria-label="화면" className="farm-nav">
-          {tabs.map((item) => (
+        <nav aria-label={t("화면", "Screens")} className="farm-nav">
+          {tabIds.map((id) => ({ id, label: tabLabel(id) })).map((item) => (
             <button
               key={item.id}
               type="button"
@@ -100,7 +110,7 @@ function OpenDevice({ deviceId, onClose }: { deviceId: string; onClose: () => vo
   const devices = usePoll(api.devices);
   const device = devices.data?.find((item) => item.id === deviceId);
   if (devices.error && !device) return <p className="farm-error">{devices.error}</p>;
-  if (!devices.data) return <p className="farm-note">불러오는 중</p>;
-  if (!device) return <p className="farm-error">기기를 찾지 못했습니다. ({deviceId})</p>;
+  if (!devices.data) return <p className="farm-note">{t("불러오는 중", "Loading")}</p>;
+  if (!device) return <p className="farm-error">{t("기기를 찾지 못했습니다.", "Device not found.")} ({deviceId})</p>;
   return <DeviceDetail device={device} onClose={onClose} />;
 }

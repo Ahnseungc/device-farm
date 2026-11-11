@@ -7,6 +7,7 @@ import { stepTarget, type FlowStep } from "@device-farm/core/flows/schema";
 
 import { api, errorMessage, usePoll } from "./api-client";
 import { useAppConfig } from "./app-context";
+import { getLocale, t } from "./i18n";
 import { ActionButton } from "./seed-design/ui/action-button";
 import { Badge, type BadgeProps } from "./seed-design/ui/badge";
 import { Callout } from "./seed-design/ui/callout";
@@ -16,7 +17,26 @@ import "./map-flow-builder.css";
 type Message = { text: string; error: boolean };
 type StepKind = MapBlock["kind"] | "home" | "expectText";
 
-const kindLabels = { tab: "탭", navigate: "이동", popup: "팝업", home: "홈", expectText: "문구 확인" } as const satisfies Record<StepKind, string>;
+const kindLabel = (kind: StepKind): string =>
+  ({ tab: t("탭", "Tab"), navigate: t("이동", "Navigate"), popup: t("팝업", "Popup"), home: t("홈", "Home"), expectText: t("문구 확인", "Expect text") })[kind];
+
+/** core `advance`·`mapFlowError`의 한국어 문장을 영어 화면에서 바꿔 보인다 */
+const mapFlowMessagePatterns: [RegExp, (...groups: string[]) => string][] = [
+  [/^(\d+)번째 블록: (.*)$/s, (index, rest) => `Block ${index}: ${localizeMapFlowMessage(rest)}`],
+  [/^「(.*)」는 앞 블록을 누른 뒤 지도에 남은 문구가 아닙니다\.$/s, (text) => `“${text}” is not text the map recorded after the previous block.`],
+  [/^「(.*)」는 (.*) 화면 지도에 없는 버튼입니다\.$/s, (name, path) => `“${name}” is not a button on ${path} in the screen map.`],
+  [/^누르는 블록이 없습니다\.$/, () => "Add at least one tap block."],
+  [/^문구 확인 블록이 없습니다\.$/, () => "Add at least one expect-text block."],
+];
+
+function localizeMapFlowMessage(message: string): string {
+  if (getLocale() !== "en") return message;
+  for (const [pattern, english] of mapFlowMessagePatterns) {
+    const match = pattern.exec(message);
+    if (match) return english(...match.slice(1));
+  }
+  return message;
+}
 const kindTones = { tab: "neutral", navigate: "informative", popup: "warning", home: "neutral", expectText: "positive" } as const satisfies Record<StepKind, BadgeProps["tone"]>;
 
 /** 조립한 스텝 한 줄: 종류, 누른 버튼·확인 문구, 누른 뒤 도착한 화면 */
@@ -36,7 +56,7 @@ function placeSteps(edges: Parameters<typeof blocksAt>[0], steps: readonly FlowS
         ? (blocksAt(edges, cursor.path, rules).find((block) => block.step.target.name === step.target.name && block.step.target.role === step.target.role)?.kind ?? "navigate")
         : step.type;
     const next = advance(edges, cursor, step, rules);
-    if (typeof next === "string") return { placed, cursor: `${index + 1}번째 블록: ${next}` };
+    if (typeof next === "string") return { placed, cursor: localizeMapFlowMessage(`${index + 1}번째 블록: ${next}`) };
     cursor = next;
     placed.push({ kind, label: stepTarget(step, rules.homeTabName), path: cursor.path });
   }
@@ -46,7 +66,7 @@ function placeSteps(edges: Parameters<typeof blocksAt>[0], steps: readonly FlowS
 function KindBadge({ kind }: { kind: StepKind }) {
   return (
     <Badge tone={kindTones[kind]} variant="weak">
-      {kindLabels[kind]}
+      {kindLabel(kind)}
     </Badge>
   );
 }
@@ -57,13 +77,13 @@ function StepTimeline({ placed, onRemoveLast, onClear }: { placed: PlacedStep[];
   return (
     <VStack gap="x3" className="mfb-column">
       <HStack justify="space-between" align="center">
-        <Text textStyle="t4Bold">{`조립한 플로우 · ${placed.length}개`}</Text>
+        <Text textStyle="t4Bold">{t(`조립한 플로우 · ${placed.length}개`, `Assembled flow · ${placed.length} blocks`)}</Text>
         <HStack gap="x1_5">
           <ActionButton variant="neutralWeak" size="small" disabled={placed.length === 0} onClick={onRemoveLast}>
-            마지막 빼기
+            {t("마지막 빼기", "Remove last")}
           </ActionButton>
           <ActionButton variant="neutralWeak" size="small" disabled={placed.length === 0} onClick={onClear}>
-            처음부터
+            {t("처음부터", "Start over")}
           </ActionButton>
         </HStack>
       </HStack>
@@ -73,7 +93,7 @@ function StepTimeline({ placed, onRemoveLast, onClear }: { placed: PlacedStep[];
           <VStack gap="x0_5" className="mfb-step-body">
             <HStack gap="x1_5" align="center">
               <KindBadge kind="home" />
-              <Text textStyle="t4Medium">홈에서 시작</Text>
+              <Text textStyle="t4Medium">{t("홈에서 시작", "Start at home")}</Text>
             </HStack>
             <Text textStyle="t3Regular" color="fg.neutralSubtle">{homePath}</Text>
           </VStack>
@@ -131,17 +151,17 @@ function BlockPalette({ edges, cursor, canGoHome, onPick }: { edges: Parameters<
   return (
     <VStack gap="x4" className="mfb-column">
       <VStack gap="x0_5">
-        <Text textStyle="t3Regular" color="fg.neutralSubtle">지금 화면</Text>
+        <Text textStyle="t3Regular" color="fg.neutralSubtle">{t("지금 화면", "Current screen")}</Text>
         <Text textStyle="t5Bold">{cursor.path}</Text>
       </VStack>
       {cursor.texts.length > 0 ? (
-        <BlockGroup title="방금 누른 뒤 보인 문구">
+        <BlockGroup title={t("방금 누른 뒤 보인 문구", "Text shown after the last tap")}>
           {cursor.texts.map((text) => (
             <BlockRow key={text} kind="expectText" label={text} onPick={() => onPick({ type: "expectText", text })} />
           ))}
         </BlockGroup>
       ) : null}
-      <BlockGroup title="이 화면 버튼">
+      <BlockGroup title={t("이 화면 버튼", "Buttons on this screen")}>
         {own.length > 0 ? (
           own.map((block) => (
             <BlockRow
@@ -153,11 +173,11 @@ function BlockPalette({ edges, cursor, canGoHome, onPick }: { edges: Parameters<
             />
           ))
         ) : (
-          <Text textStyle="t3Regular" color="fg.neutralMuted">이 화면은 아직 버튼 눌러보기 기록이 없어요. 탭이나 홈으로 옮겨 가세요.</Text>
+          <Text textStyle="t3Regular" color="fg.neutralMuted">{t("이 화면은 아직 버튼 눌러보기 기록이 없어요. 탭이나 홈으로 옮겨 가세요.", "No button crawl data for this screen yet. Move to a tab or back home.")}</Text>
         )}
       </BlockGroup>
       <VStack gap="x1_5">
-        <Text textStyle="t3Bold" color="fg.neutralMuted">하단 탭 · 홈</Text>
+        <Text textStyle="t3Bold" color="fg.neutralMuted">{t("하단 탭 · 홈", "Bottom tabs · Home")}</Text>
         <HStack gap="x1_5" wrap="wrap">
           {tabs.map((block) => (
             <ActionButton key={block.step.target.name} variant="neutralWeak" size="small" onClick={() => onPick(block.step)}>
@@ -166,7 +186,7 @@ function BlockPalette({ edges, cursor, canGoHome, onPick }: { edges: Parameters<
           ))}
           {canGoHome ? (
             <ActionButton variant="neutralOutline" size="small" onClick={() => onPick({ type: "home" })}>
-              홈으로 돌아가기
+              {t("홈으로 돌아가기", "Back to home")}
             </ActionButton>
           ) : null}
         </HStack>
@@ -184,13 +204,14 @@ export function MapFlowBuilder({ onAdded }: { onAdded: (message: Message) => voi
   const [busy, setBusy] = useState(false);
   const edges = map.data?.edges ?? [];
   const { placed, cursor } = placeSteps(edges, steps, rules);
-  const invalid = mapFlowError(edges, steps, rules);
+  const rawInvalid = mapFlowError(edges, steps, rules);
+  const invalid = rawInvalid === null ? null : localizeMapFlowMessage(rawInvalid);
 
   async function save() {
     setBusy(true);
     try {
       await api.addMapFlow({ name: name.trim(), steps });
-      onAdded({ text: `「${name.trim()}」을 후보에 담았습니다. 후보에서 확정하면 다음 점검부터 돌아요.`, error: false });
+      onAdded({ text: t(`「${name.trim()}」을 후보에 담았습니다. 후보에서 확정하면 다음 점검부터 돌아요.`, `Added “${name.trim()}” to the candidates. Confirm it there and it runs from the next check.`), error: false });
       setSteps([]);
       setName("");
     } catch (error) {
@@ -201,13 +222,16 @@ export function MapFlowBuilder({ onAdded }: { onAdded: (message: Message) => voi
   }
 
   return (
-    <section className="baselines-card" aria-label="화면 지도로 플로우 만들기">
+    <section className="baselines-card" aria-label={t("화면 지도로 플로우 만들기", "Build a flow from the screen map")}>
       <VStack gap="x0_5">
         <Text as="h2" textStyle="t5Bold">
-          화면 지도로 플로우 만들기
+          {t("화면 지도로 플로우 만들기", "Build a flow from the screen map")}
         </Text>
         <Text textStyle="t3Regular" color="fg.neutralSubtle">
-          오른쪽에서 블록을 고르면 왼쪽에 차례로 붙어요. 버튼을 누른 뒤에는 보인 문구로 확인 블록을 붙일 수 있어요.
+          {t(
+            "오른쪽에서 블록을 고르면 왼쪽에 차례로 붙어요. 버튼을 누른 뒤에는 보인 문구로 확인 블록을 붙일 수 있어요.",
+            "Pick blocks on the right and they line up on the left. After a tap, you can add a check block from the text that appeared.",
+          )}
         </Text>
       </VStack>
       {map.error ? <Callout tone="critical" description={map.error} /> : null}
@@ -215,7 +239,7 @@ export function MapFlowBuilder({ onAdded }: { onAdded: (message: Message) => voi
       <div className="mfb-layout">
         <StepTimeline placed={placed} onRemoveLast={() => setSteps((current) => current.slice(0, -1))} onClear={() => setSteps([])} />
         {typeof cursor === "string" ? (
-          <Callout tone="warning" description={`화면 지도가 바뀌어 이어 붙일 수 없어요. ${cursor}`} />
+          <Callout tone="warning" description={`${t("화면 지도가 바뀌어 이어 붙일 수 없어요.", "The screen map changed, so blocks can no longer be appended.")} ${cursor}`} />
         ) : (
           <BlockPalette edges={edges} cursor={cursor} canGoHome={steps.length > 0} onPick={(step) => setSteps((current) => [...current, step])} />
         )}
@@ -223,12 +247,12 @@ export function MapFlowBuilder({ onAdded }: { onAdded: (message: Message) => voi
 
       <div className="mfb-save">
         <div className="flows-prd">
-          <TextField label="플로우 이름" value={name} onValueChange={({ value }) => setName(value)}>
-            <TextFieldInput placeholder="혜택에서 출석체크 열기" />
+          <TextField label={t("플로우 이름", "Flow name")} value={name} onValueChange={({ value }) => setName(value)}>
+            <TextFieldInput placeholder={t("혜택에서 출석체크 열기", "Open check-in from Rewards")} />
           </TextField>
         </div>
         <ActionButton variant="neutralSolid" size="medium" loading={busy} disabled={busy || invalid !== null || !name.trim()} onClick={() => void save()}>
-          후보로 담기
+          {t("후보로 담기", "Add as candidate")}
         </ActionButton>
       </div>
       {steps.length > 0 && invalid ? <Text textStyle="t3Regular" color="fg.neutralMuted">{invalid}</Text> : null}

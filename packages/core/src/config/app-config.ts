@@ -9,6 +9,15 @@ import type { ScreenScenario } from "../scenarios";
 
 export type GuardMethod = "POST" | "PUT" | "PATCH" | "DELETE";
 
+/** 디바이스팜 화면(apps/web) 언어. 기본 한국어, `FARM_LOCALE=en`으로도 바꾼다 */
+export type FarmLocale = "ko" | "en";
+export const farmLocales = ["ko", "en"] as const satisfies readonly FarmLocale[];
+export const defaultFarmLocale: FarmLocale = "ko";
+
+export function isFarmLocale(value: unknown): value is FarmLocale {
+  return typeof value === "string" && (farmLocales as readonly string[]).includes(value);
+}
+
 /** 가드가 금지어보다 먼저 통과시키는 쓰기 요청. `{x}`는 슬래시 없는 한 칸 */
 export interface AllowedRequest {
   method: GuardMethod;
@@ -74,6 +83,8 @@ export interface InstallConfig {
 
 export interface AppConfig extends AppNavigation {
   name: string;
+  /** 디바이스팜 화면 언어. 기본 "ko". 환경 변수 `FARM_LOCALE`이 있으면 그것이 이긴다 */
+  locale: FarmLocale;
   /** Android 패키지 = iOS 번들 id. 플랫폼마다 다르면 `iosBundleIds`로 덮는다 */
   appIds: Record<BuildKind, string>;
   iosBundleIds?: Partial<Record<BuildKind, string>>;
@@ -172,6 +183,7 @@ export function defineAppConfig(input: AppConfigInput): AppConfig {
   const guard = input.guard ?? {};
   return {
     name: input.name,
+    locale: isFarmLocale(input.locale) ? input.locale : defaultFarmLocale,
     appIds: input.appIds,
     iosBundleIds: input.iosBundleIds,
     web: { dev: input.web?.dev ?? "", prod: input.web?.prod ?? "" },
@@ -217,12 +229,14 @@ export function kindOfAppId(app: Pick<AppConfig, "appIds" | "iosBundleIds">, app
 /** 브라우저 화면에 내려 줄 값(정규식·함수 없는 JSON) */
 export interface PublicAppConfig extends AppNavigation {
   name: string;
+  locale: FarmLocale;
   forbiddenClickNames: string[];
 }
 
 export function publicAppConfig(app: AppConfig): PublicAppConfig {
   return {
     name: app.name,
+    locale: app.locale ?? defaultFarmLocale,
     homePath: app.homePath,
     homeTabName: app.homeTabName,
     tabPaths: app.tabPaths,
