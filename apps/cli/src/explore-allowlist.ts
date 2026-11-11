@@ -1,4 +1,5 @@
-import { writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
 
 import { addMissingAsDeny, isMutatingMethod } from "@device-farm/core/explore/policy";
 import type { WriteOperation } from "@device-farm/core/explore/policy";
@@ -33,6 +34,7 @@ async function main(): Promise<void> {
   const operations = collectWriteOperations(await fetchSpec(url));
   const current = await loadAllowlist();
   const { allowlist, added } = addMissingAsDeny(current, operations);
+  await mkdir(dirname(defaultAllowlistFile), { recursive: true });
   await writeFile(defaultAllowlistFile, `${JSON.stringify(allowlist, null, 2)}\n`);
   console.log(`쓰기 API ${operations.length}개 중 ${added}개를 deny로 추가했습니다. (${defaultAllowlistFile})`);
 }

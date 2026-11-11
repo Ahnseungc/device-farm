@@ -29,7 +29,8 @@ const agentIdHashLength = 8;
 
 // 사용자 프로젝트(Claude Code를 연 폴더)의 farm.config.ts를 먼저 본다. 그다음 디바이스팜 루트 기준으로 .env·test-results를 쓴다.
 const userProject = process.cwd();
-const farmRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../..");
+// npm 패키지(`npx device-farm mcp`)로 돌면 bin이 FARM_ROOT를 사용자 프로젝트로 넘긴다
+const farmRoot = process.env.FARM_ROOT ?? path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../..");
 const userConfig = path.join(userProject, "farm.config.ts");
 const configFile = process.env.FARM_CONFIG ? resolveAppConfigFile(process.env, userProject) : existsSync(userConfig) ? userConfig : resolveAppConfigFile(process.env, farmRoot);
 process.chdir(farmRoot);
