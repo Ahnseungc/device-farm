@@ -1,27 +1,16 @@
-<p align="center">
-  <img src="https://raw.githubusercontent.com/Ahnseungc/device-farm/main/docs/assets/logo.svg?sanitize=true" width="96" alt="device-farm 로고: 초록 바탕의 폰에서 새싹이 자란다" />
-</p>
+# @ahnseungchan/device-farm (한국어)
 
-<h1 align="center">device-farm</h1>
+[English](https://github.com/Ahnseungc/device-farm/blob/main/README.md)
 
-<p align="center">
-  <b>WebView로 만든 모바일 앱을 실기기에서 QA 자동화하는 디바이스팜.</b><br />
-  내 프로젝트에 설치하고 <code>farm.config.ts</code> 하나로 점검할 앱을 정한다.
-</p>
+**WebView로 만든 모바일 앱을 실기기에서 QA 자동화하는 디바이스팜.**
+내 프로젝트에 설치하고 `farm.config.ts` 하나로 점검할 앱을 정합니다.
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/@ahnseungchan/device-farm"><img src="https://img.shields.io/npm/v/@ahnseungchan/device-farm" alt="npm" /></a>
-  <a href="https://github.com/Ahnseungc/device-farm/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="license" /></a>
-  <a href="https://nodejs.org/"><img src="https://img.shields.io/node/v/@ahnseungchan/device-farm" alt="node" /></a>
+  <a href="https://ahnseungc.github.io/device-farm/"><img src="https://raw.githubusercontent.com/Ahnseungc/device-farm/main/docs/assets/demo.gif" width="800" alt="device-farm 데모: 기기 목록, 기준 화면과 다른 실패 상세, 화면 지도, 카오스 후보 가중치, 정책 규칙" /></a>
 </p>
 
 <p align="center">
-  <a href="#설치">설치</a> ·
-  <a href="#quick-start">Quick start</a> ·
-  <a href="#cli">CLI</a> ·
-  <a href="#claude-code-mcp">Claude Code</a> ·
-  <a href="#안전">안전</a> ·
-  <a href="https://github.com/Ahnseungc/device-farm/blob/main/CHANGELOG.md">Changelog</a>
+  <b><a href="https://ahnseungc.github.io/device-farm/">라이브 데모 →</a></b> (서버·기기 없이 가상 앱 「Sample Shop」 데이터로 화면만 봅니다. 읽기 전용)
 </p>
 
 <p align="center">
@@ -246,6 +235,7 @@ claude mcp add --scope project device-farm -- npx device-farm mcp
 <summary><b>기기 없이 화면만 열어 볼 수 있나요?</b></summary>
 
 네. `npx device-farm init && npx device-farm dev`면 예시 설정으로 화면이 열립니다. 기기 목록은 비어 있고 점검은 돌지 않습니다.
+가짜 데이터로 채운 화면은 [라이브 데모](https://ahnseungc.github.io/device-farm/)에서 바로 볼 수 있습니다.
 
 </details>
 
@@ -286,8 +276,12 @@ claude mcp add --scope project device-farm -- npx device-farm mcp
 git clone https://github.com/Ahnseungc/device-farm.git && cd device-farm
 npm install
 npm run typecheck && npm test && npm run build
-npm run dev   # 화면 개발(vite dev). 저장소 루트 farm.config.ts → farm.config.example.ts
+npm run dev        # 화면 개발(vite dev). 저장소 루트 farm.config.ts → farm.config.example.ts
+npm run demo:dev   # 데모 화면(서버·기기 없음) http://127.0.0.1:5499
 ```
+
+데모(`apps/web/demo/`)는 `./api-client`·`./live-view`만 가짜 데이터 모듈로 바꿔 끼워 같은 화면 코드를 씁니다. 실제 빌드에는 들어가지 않습니다.
+`npm run demo:build && npx tsx tools/record-demo-gif.ts`로 `docs/assets/demo.gif`를 다시 만듭니다(ffmpeg 필요). `main`에 push하면 `.github/workflows/pages.yml`이 데모를 GitHub Pages에 올립니다.
 
 npm workspaces 모노레포입니다. 의존 방향은 `core ← devices ← engine ← server ← apps`이고 `tools/boundaries.test.ts`가 지킵니다. 배포 패키지는 워크스페이스를 `dist/`에 묶어 냅니다(tsup + vite build).
 
