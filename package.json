@@ -1,6 +1,6 @@
 {
   "name": "@ahnseungchan/device-farm",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "A device farm that runs QA on real phones for WebView-based mobile apps: baseline screen diffs, button crawl and screen map, flow recording, seeded chaos exploration, policy/Figma copy checks, and a Claude Code MCP server. Configure your app in one farm.config.ts.",
   "type": "module",
   "bin": {

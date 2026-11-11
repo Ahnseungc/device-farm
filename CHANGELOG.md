@@ -2,6 +2,19 @@
 
 `@ahnseungchan/device-farm`의 바뀐 점을 적는다.
 
+## [0.1.3] - 2026-11-11
+
+### Added
+
+- 웹 화면 영어 지원: `apps/web/i18n.ts`(`t("한국어", "English")`·`setLocale`·`dateLocale`)로 탭·버튼·라벨·안내·빈 화면·다이얼로그·상태 배지·aria-label을 한국어/영어로 낸다. 날짜·시각 표기도 언어를 따른다
+- 앱 설정 `locale: "ko" | "en"`(기본 `"ko"`). 환경 변수 `FARM_LOCALE=en`이 설정보다 먼저다. 화면은 `/api/devices/app`의 `locale`을 받아 언어를 정한다. 기본 동작(한국어)은 그대로
+
+### Changed
+
+- 데모(`apps/web/demo/`)를 영어로: 가상 앱 「Sample Shop」 데이터(기기·점검 메시지·화면 지도·플로우·카오스·정책 규칙)와 SVG 폰 화면을 영어로 바꿈. 데모 HTML은 `lang="en"`
+- `docs/assets/demo.gif`를 영어 데모로 다시 녹화
+- README FAQ 「Why is the UI in Korean?」을 「Is the UI available in English?」로 바꾸고 Configuration 표에 `locale`을 추가(한국어 문서도 같이)
+
 ## [0.1.2] - 2026-11-11
 
 ### Docs
