@@ -2,7 +2,7 @@
 
 `@ahnseungchan/device-farm`의 바뀐 점을 적는다.
 
-## [Unreleased]
+## [0.2.0] - 2026-11-17
 
 ### Added
 
