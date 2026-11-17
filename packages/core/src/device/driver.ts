@@ -1,4 +1,4 @@
-import type { AppConfig } from "../config/app-config";
+import { homeTabLabelsOf, type AppConfig, type AppNavigation } from "../config/app-config";
 
 /** 플랫폼마다 구현이 다른 화면 조작. 경로는 앱 WebView가 쓰는 웹 주소 기준이다. */
 export interface ScreenDriver {
@@ -22,6 +22,13 @@ export interface ScreenDriver {
 export type ClickRole = "button" | "link";
 /** exact: 이름이 같다(기본). prefix: 이름이 이 글자로 시작한다 */
 export type ClickMatch = "exact" | "prefix";
+
+/** 누를 때 찾아볼 글자들. 홈 탭(어느 이름이든)이면 홈 탭에 적힐 수 있는 글자 전부, 아니면 그 이름 하나 */
+export function clickLabels(nav: Pick<AppNavigation, "homeTabName" | "homeTabLabels">, name: string, role: ClickRole = "button"): readonly string[] {
+  const labels = homeTabLabelsOf(nav);
+  if (role === "link" && (name === nav.homeTabName || labels.includes(name))) return labels;
+  return [name];
+}
 /** 홈 탭으로 가기를 시도하는 횟수 (작성자 판단). 실패마다 화면 상단 뒤로 버튼을 한 번 누른다(Android·iOS 같다) */
 export const homeAttempts = 3;
 

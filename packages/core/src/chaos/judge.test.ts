@@ -16,6 +16,8 @@ const calm = { sinceRelaunchMs: 60_000, guardBlocked: false };
 // 가드가 끊은 요청의 콘솔 문구는 언제나 경고
 assert.equal(judgeIssues([issue("console", "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector")], calm).errors.length, 0);
 assert.equal(judgeIssues([issue("console", "Uncaught TypeError: x is undefined")], calm).errors.length, 1);
+// 화면 깨짐 점검 실패는 봇 오류(예전 overflow 경고와 다르다)
+assert.equal(judgeIssues([issue("layout", "/my 글자 겹침 — 글자끼리 겹칩니다")], calm).errors.length, 1);
 
 // 이 스텝에서 가드가 막았으면 콘솔·네트워크 오류는 경고(Firebase 인증·FCM 실패 등). 앱 오류는 그대로 오류
 {

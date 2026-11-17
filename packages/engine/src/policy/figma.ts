@@ -54,3 +54,42 @@ export async function fetchFigmaTexts(token: string, refs: readonly FigmaRef[], 
   }
   return result;
 }
+
+/** 노드가 있는 피그마 페이지를 찾을 때 한 번에 묻는 노드 수 (작성자 판단, 응답에 노드 하위가 다 실려 커진다) */
+const pageLookupChunk = 20;
+
+type FileResponse = { document?: { children?: (FigmaNode & { id?: string })[] } };
+
+function collectIds(node: (FigmaNode & { id?: string }) | undefined, into: Set<string>): void {
+  if (!node) return;
+  if (node.id) into.add(node.id);
+  for (const child of node.children ?? []) collectIds(child as FigmaNode & { id?: string }, into);
+}
+
+/**
+ * 노드 → 그 노드가 있는 피그마 페이지(`fileKey:pageId`). `files/:key?ids=`는 요청한 노드가 든 페이지만 하위를 채워 돌려준다.
+ * 시트·팝업·필터 같은 다른 상태는 보통 같은 페이지의 다른 프레임에 그린다(2026-11-12, 「유의사항을 확인해 주세요」 등).
+ */
+export async function fetchFigmaPagesOf(token: string, refs: readonly FigmaRef[], fetchImpl: FetchLike): Promise<Record<FigmaRef, FigmaRef>> {
+  const byFile = new Map<string, string[]>();
+  for (const ref of refs) {
+    const [fileKey, ...rest] = ref.split(":");
+    byFile.set(fileKey, [...(byFile.get(fileKey) ?? []), rest.join(":")]);
+  }
+  const result: Record<FigmaRef, FigmaRef> = {};
+  for (const [fileKey, ids] of byFile) {
+    for (let start = 0; start < ids.length; start += pageLookupChunk) {
+      const chunk = ids.slice(start, start + pageLookupChunk);
+      const response = await fetchImpl(`https://api.figma.com/v1/files/${fileKey}?ids=${encodeURIComponent(chunk.join(","))}`, { headers: { "X-Figma-Token": token } });
+      if (!response.ok) throw new Error(`Figma ${response.status}: ${fileKey}`);
+      const body = (await response.json()) as FileResponse;
+      for (const page of body.document?.children ?? []) {
+        if (!page.id || (page.children ?? []).length === 0) continue;
+        const inside = new Set<string>();
+        collectIds(page, inside);
+        for (const id of chunk) if (inside.has(id)) result[`${fileKey}:${id}`] = `${fileKey}:${page.id}`;
+      }
+    }
+  }
+  return result;
+}

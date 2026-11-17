@@ -1,0 +1,153 @@
+/* 「디자인 점검」. SEED 토큰만 쓴다. 플로우 목록과 같은 한 줄 목록 + 일치율 막대 */
+.design-page {
+  min-width: 0;
+  max-width: 1040px;
+}
+
+.design-page h1 {
+  margin: 0;
+}
+
+.design-card {
+  padding: var(--seed-dimension-x5);
+  background: var(--seed-color-bg-layer-default);
+  border: 1px solid var(--seed-color-stroke-neutral-muted);
+  border-radius: var(--seed-radius-r4);
+}
+
+.design-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--seed-dimension-x3);
+}
+
+.design-stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x1);
+  padding: var(--seed-dimension-x4) var(--seed-dimension-x5);
+  background: var(--seed-color-bg-layer-default);
+  border: 1px solid var(--seed-color-stroke-neutral-muted);
+  border-radius: var(--seed-radius-r4);
+}
+
+.design-search {
+  flex: 1 1 280px;
+  max-width: 360px;
+}
+
+.design-list {
+  display: flex;
+  flex-direction: column;
+  background: var(--seed-color-bg-layer-default);
+  border: 1px solid var(--seed-color-stroke-neutral-muted);
+  border-radius: var(--seed-radius-r4);
+  overflow: hidden;
+}
+
+.design-row {
+  display: flex;
+  align-items: center;
+  gap: var(--seed-dimension-x4);
+  padding: var(--seed-dimension-x4) var(--seed-dimension-x5);
+  border-bottom: 1px solid var(--seed-color-stroke-neutral-muted);
+}
+
+.design-list > :last-child .design-row {
+  border-bottom: none;
+}
+
+.design-pick {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  accent-color: var(--seed-color-bg-brand-solid);
+}
+
+.design-row-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.design-path,
+.design-row-message {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.design-row-side {
+  flex: none;
+}
+
+.design-match {
+  display: flex;
+  align-items: center;
+  gap: var(--seed-dimension-x2);
+  width: 132px;
+}
+
+.design-match-track {
+  flex: 1;
+  height: 6px;
+  background: var(--seed-color-bg-neutral-weak);
+  border-radius: var(--seed-radius-full);
+  overflow: hidden;
+}
+
+.design-match-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--seed-color-fg-neutral-muted);
+}
+
+.design-match[data-tone="good"] .design-match-fill {
+  background: var(--seed-color-bg-positive-solid);
+}
+
+.design-match[data-tone="fair"] .design-match-fill {
+  background: var(--seed-color-bg-warning-solid);
+}
+
+.design-match[data-tone="suspect"] {
+  justify-content: flex-end;
+}
+
+.design-match-value {
+  width: 40px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.design-match[data-tone="none"] .design-match-value {
+  color: var(--seed-color-fg-neutral-subtle);
+}
+
+.design-bar {
+  position: fixed;
+  bottom: var(--seed-dimension-x5);
+  left: 50%;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: var(--seed-dimension-x6);
+  padding: var(--seed-dimension-x3) var(--seed-dimension-x3) var(--seed-dimension-x3) var(--seed-dimension-x5);
+  background: var(--seed-color-bg-layer-floating);
+  border: 1px solid var(--seed-color-stroke-neutral-muted);
+  border-radius: var(--seed-radius-full);
+  box-shadow: 0 8px 28px color-mix(in srgb, var(--seed-color-fg-neutral) 16%, transparent);
+  transform: translateX(-50%);
+  animation: farm-notice-in var(--farm-dur-short) var(--farm-ease-out);
+}
+
+/* 좁은 화면: 일치율·버튼을 아래 줄로 */
+@media (max-width: 720px) {
+  .design-row {
+    flex-wrap: wrap;
+  }
+
+  .design-row-side {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}

@@ -115,21 +115,46 @@ async function listAndroid(exec: Exec, appId: string): Promise<Device[]> {
   return Promise.all(serials.map((serial) => androidDevice(exec, serial, appId)));
 }
 
-async function listIos(exec: Exec, appId: string): Promise<Device[]> {
-  const listings = parseDevicectlList(await devicectlJson(exec, ["list", "devices"]));
-  return Promise.all(
-    listings.map(async (listing) => ({
-      ...listing,
-      platform: "ios" as const,
-      appVersion: await iosAppVersion(exec, listing.id, appId),
-    })),
+export type Warn = (line: string) => void;
+
+const warned = new Set<string>();
+/** 목록은 2초마다 다시 읽으므로 같은 경고는 한 번만 남긴다 */
+const warnOnce: Warn = (line) => {
+  if (warned.has(line)) return;
+  warned.add(line);
+  console.warn(line);
+};
+
+const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
+
+/**
+ * iOS 기기. 쓸 수 없는 기기(개발용으로 페어링 안 된 개인 아이폰 등)나 devicectl 오류는 건너뛴다.
+ * 2026-11-16: 호스트 근처의 페어링 안 된 아이폰 하나 때문에 Android까지 기기 목록 전체가 500이 됐다.
+ */
+async function listIos(exec: Exec, appId: string, warn: Warn): Promise<Device[]> {
+  let listings: IosListing[];
+  try {
+    listings = parseDevicectlList(await devicectlJson(exec, ["list", "devices"]));
+  } catch (error) {
+    warn(`[device] iOS 기기 목록을 읽지 못해 건너뜁니다: ${messageOf(error)}`);
+    return [];
+  }
+  const devices = await Promise.all(
+    listings.map(async (listing): Promise<Device | null> => {
+      try {
+        return { ...listing, platform: "ios", appVersion: await iosAppVersion(exec, listing.id, appId) };
+      } catch (error) {
+        warn(`[device] iOS 기기 ${listing.model || listing.id}(${listing.id})를 건너뜁니다: ${messageOf(error)}`);
+        return null;
+      }
+    }),
   );
+  return devices.filter((device): device is Device => device !== null);
 }
 
-/** 연결된 Android·iOS 기기. Android 먼저. */
-/** 연결된 기기. 앱 버전은 `appId`(iOS는 `iosAppId`가 있으면 그것) 기준 */
-export async function listDevices(exec: Exec, appId: string, iosAppId: string = appId): Promise<Device[]> {
-  const [android, ios] = await Promise.all([listAndroid(exec, appId), listIos(exec, iosAppId)]);
+/** 연결된 Android·iOS 기기. Android 먼저. 앱 버전은 `appId`(iOS는 `iosAppId`가 있으면 그것) 기준 */
+export async function listDevices(exec: Exec, appId: string, iosAppId: string = appId, warn: Warn = warnOnce): Promise<Device[]> {
+  const [android, ios] = await Promise.all([listAndroid(exec, appId), listIos(exec, iosAppId, warn)]);
   return [...android, ...ios];
 }
 

@@ -56,17 +56,38 @@ export function syslogLineToEntry(line: string): LogLine | null {
   return { source: text.includes(iosCrashMarker) ? "crash" : "system", text };
 }
 
-export function consoleToEntry(type: string, text: string): LogLine | null {
-  return type === "error" ? { source: "console", text } : null;
+const withPage = (line: LogLine, page: string | undefined): LogLine => (page ? { ...line, page } : line);
+
+/** 주소 → 경로. 쿼리·해시는 버린다. http(s)가 아니면(about:blank 등) undefined */
+function pathOfUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol.startsWith("http") ? parsed.pathname : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
-export function responseToEntry(status: number, method: string, url: string): LogLine | null {
+/**
+ * 요청·콘솔을 낸 화면 경로. 앱은 화면마다 WebView를 따로 쌓아, 늦게 도착한 로그도 낸 페이지를 알 수 있다.
+ * referer(요청을 낸 페이지)가 먼저. 화면 이동 요청이면 WebView 주소가 그 요청 주소 자체라 쓰지 않는다.
+ */
+export function originPath(input: { referer?: string; pageUrl?: string; navigation: boolean }): string | undefined {
+  return pathOfUrl(input.referer) ?? (input.navigation ? undefined : pathOfUrl(input.pageUrl));
+}
+
+export function consoleToEntry(type: string, text: string, page?: string): LogLine | null {
+  return type === "error" ? withPage({ source: "console", text }, page) : null;
+}
+
+export function responseToEntry(status: number, method: string, url: string, page?: string): LogLine | null {
   if (status < httpErrorStatus) return null;
-  return { source: "network", text: formatNetworkLog(method || "UNKNOWN", status, safeUrl(url)) };
+  return withPage({ source: "network", text: formatNetworkLog(method || "UNKNOWN", status, safeUrl(url)) }, page);
 }
 
-export function requestFailedToEntry(method: string, url: string, errorText: string): LogLine {
-  return { source: "network", text: formatNetworkLog(method, 0, safeUrl(url), errorText) };
+export function requestFailedToEntry(method: string, url: string, errorText: string, page?: string): LogLine {
+  return withPage({ source: "network", text: formatNetworkLog(method, 0, safeUrl(url), errorText) }, page);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -135,15 +156,27 @@ function isAndroidDriver(driver: ScreenDriver): driver is AndroidScreenDriver {
   return "context" in driver;
 }
 
+/** 요청을 낸 화면. 서비스 워커 요청은 frame()이 던진다 */
+function requestOrigin(request: Request): string | undefined {
+  let pageUrl: string | undefined;
+  try {
+    pageUrl = request.frame().page().url();
+  } catch {
+    pageUrl = undefined;
+  }
+  return originPath({ referer: request.headers().referer, pageUrl, navigation: request.isNavigationRequest() });
+}
+
 function watchPage(driver: AndroidScreenDriver, ring: LogRing): Stop {
   // 스택마다 WebView(페이지)가 새로 생긴다. context에 걸어 전부 받는다.
   const page = driver.context;
   const push = (entry: LogLine | null) => entry && ring.push(entry);
-  const onConsole = (message: ConsoleMessage) => push(consoleToEntry(message.type(), message.text()));
+  const onConsole = (message: ConsoleMessage) =>
+    push(consoleToEntry(message.type(), message.text(), originPath({ pageUrl: message.page()?.url(), navigation: false })));
   const onResponse = (response: Response) =>
-    push(responseToEntry(response.status(), response.request().method(), response.url()));
+    push(responseToEntry(response.status(), response.request().method(), response.url(), requestOrigin(response.request())));
   const onFailed = (request: Request) =>
-    push(requestFailedToEntry(request.method(), request.url(), request.failure()?.errorText ?? ""));
+    push(requestFailedToEntry(request.method(), request.url(), request.failure()?.errorText ?? "", requestOrigin(request)));
   page.on("console", onConsole);
   page.on("response", onResponse);
   page.on("requestfailed", onFailed);

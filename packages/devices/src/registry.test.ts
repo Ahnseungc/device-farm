@@ -82,4 +82,27 @@ assert.deepEqual(devices[0], { id: "R3CN", platform: "android", model: "SM-S918N
 assert.equal(devices[1].platform, "ios");
 assert.equal(devices[1].appVersion, "2.1.5");
 
+// 페어링 안 된 아이폰(앱 조회 실패)은 건너뛰고 Android는 그대로 나온다
+{
+  const warnings: string[] = [];
+  const unpaired: Exec = async (command, args) => {
+    if (command === "xcrun" && args.includes("apps")) throw new Error("ERROR: The device must be paired before it can be connected.");
+    return fakeExec(command, args);
+  };
+  const listed = await listDevices(unpaired, appId, appId, (line) => warnings.push(line));
+  assert.deepEqual(listed.map((device) => device.platform), ["android"]);
+  assert.ok(warnings.length > 0 && warnings.every((line) => line.includes("must be paired")));
+}
+// devicectl 자체가 실패해도 Android는 나온다
+{
+  const warnings: string[] = [];
+  const noXcode: Exec = async (command, args) => {
+    if (command === "xcrun") throw new Error("xcrun: error: unable to find utility devicectl");
+    return fakeExec(command, args);
+  };
+  const listed = await listDevices(noXcode, appId, appId, (line) => warnings.push(line));
+  assert.deepEqual(listed.map((device) => device.id), ["R3CN"]);
+  assert.equal(warnings.length, 1);
+}
+
 console.log("registry ok");

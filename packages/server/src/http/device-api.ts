@@ -11,7 +11,8 @@ import type { BuildKind } from "@device-farm/core/device/types";
 import { mapFlowError, mapFlowPrd, mapRulesOf } from "@device-farm/core/flows/map-flow";
 import { stepsOf, type FlowDocument } from "@device-farm/core/flows/schema";
 import { iosBackUnsupported } from "@device-farm/devices/stream/ios";
-import { listChaosRuns, readChaosRun } from "@device-farm/engine/chaos/results";
+import { listChaosRuns, readBotSummary, readChaosRun } from "@device-farm/engine/chaos/results";
+import { farmDb } from "@device-farm/engine/db/farm-db";
 import { ExploreRequestError } from "@device-farm/engine/explore/run";
 import { generateFromPrd } from "@device-farm/engine/flows/generate";
 import { llmConfigured } from "@device-farm/engine/flows/llm";
@@ -21,8 +22,11 @@ import { errorMessage, installedVersionLabel } from "@device-farm/engine/run";
 import { readScreenMap } from "@device-farm/engine/screen-map-store";
 
 import { allowedDomains, decideAccess, localUser } from "../access";
+import { createAuthGate, requestUser, setRequestUser, upgradeRefusal, type AuthGate } from "../auth/http";
+import { dbSessionStore } from "../auth/sessions";
+import { summarizeBotRun } from "../bot-check";
 import { createFarm } from "../farm";
-import type { Farm } from "../types";
+import { stoppableJobs, type Farm } from "../types";
 
 export const prodExploreMessage = "운영 빌드는 탐색하지 않습니다.";
 export const noLockMessage = "조작 잠금이 없습니다. 먼저 조작을 시작해 주세요.";
@@ -32,7 +36,6 @@ export const flowBusyMessage = "기기 점검 중에는 플로우를 확정할 �
 export { localUser };
 
 const apiPrefix = "/api/devices";
-const userHeader = "tailscale-user-login";
 const maxBodyBytes = 1024 * 1024;
 /** 화면 지도 플로우 id에 붙이는 스텝 해시 길이 (작성자 판단) */
 const mapFlowIdHashLength = 8;
@@ -102,6 +105,12 @@ function parseDevices(value: unknown): DeviceSelection {
   throw new HttpError(400, 'devices는 "all" 또는 기기 id 배열이어야 합니다.');
 }
 
+function parseFlowIds(value: unknown): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (Array.isArray(value) && value.length > 0 && value.every((id) => typeof id === "string" && id.trim())) return value.map((id: string) => id.trim());
+  throw new HttpError(400, "flowIds는 플로우 id 배열이어야 합니다.");
+}
+
 function parseKind(value: unknown): BuildKind {
   const kind = buildKinds.find((item) => item === value);
   if (!kind) throw new HttpError(400, "kind는 dev 또는 prod여야 합니다.");
@@ -115,7 +124,7 @@ function parseNames(value: unknown): string[] | undefined {
 }
 
 /**
- * 모든 요청(화면·API·파일·MJPEG)의 첫 관문. 허용 계정이 아니면 여기서 끝낸다(`access.ts`).
+ * 모든 요청(화면·API·파일·MJPEG)의 첫 관문(팀 비밀번호를 안 켰을 때). 허용 계정이 아니면 여기서 끝낸다(`access.ts`).
  * API는 `{ error }` JSON, 화면은 한 줄 안내.
  */
 export function createAccessMiddleware(domains: readonly string[]) {
@@ -124,7 +133,10 @@ export function createAccessMiddleware(domains: readonly string[]) {
 
 function accessGate(req: IncomingMessage, res: ServerResponse, next: () => void, domains: readonly string[]): void {
   const access = decideAccess({ remoteAddress: req.socket.remoteAddress, headers: req.headers }, domains);
-  if (access.ok) return next();
+  if (access.ok) {
+    setRequestUser(req, access.user);
+    return next();
+  }
   res.statusCode = access.status;
   res.setHeader("cache-control", "no-store");
   if ((req.url ?? "").startsWith("/api/")) {
@@ -136,10 +148,9 @@ function accessGate(req: IncomingMessage, res: ServerResponse, next: () => void,
   res.end(`디바이스팜: ${access.message}`);
 }
 
+/** 관문이 정한 사용자 이름: Tailscale 계정, 팀 비밀번호 로그인 `team@<ip>`, 호스트 자신 `local` */
 function userOf(req: IncomingMessage): string {
-  const header = req.headers[userHeader];
-  const value = (Array.isArray(header) ? header[0] : header)?.trim();
-  return value || localUser;
+  return requestUser(req);
 }
 
 /** `test-results` 안의 실제 파일만. `..`·절대 경로·심볼릭 링크 탈출·허용 밖 확장자는 null. */
@@ -163,23 +174,81 @@ export function resolveResultFile(root: string, relative: string): { file: strin
 type Handler = (context: { farm: Farm; req: IncomingMessage; res: ServerResponse; url: URL; id: string }) => Promise<void>;
 
 export const noRunToStopMessage = "멈출 점검이 없어요.";
+/** 이 서버가 돌리지 않는 작업(터미널 CLI로 돈 것·이미 끝난 것) */
+export const noJobToStopMessage = "여기서 멈출 수 있는 작업이 아니에요. 이미 끝났거나 터미널에서 돌고 있어요.";
 
 async function stopRun({ farm, res }: Parameters<Handler>[0]): Promise<void> {
   if (!farm.stopRun()) return sendJson(res, 409, { error: noRunToStopMessage });
   sendJson(res, 200, { stopping: true });
 }
 
+/** 진행 중 플로팅 「중지」: body.kind = run·bot·explore·policy */
+async function stopJob({ farm, req, res }: Parameters<Handler>[0]): Promise<void> {
+  const body = await readBody(req);
+  const kind = stoppableJobs.find((item) => item === body.kind);
+  if (!kind) throw new HttpError(400, `kind는 ${stoppableJobs.join("·")} 중 하나여야 합니다.`);
+  if (!farm.stopJob(kind)) return sendJson(res, 409, { error: noJobToStopMessage });
+  sendJson(res, 200, { stopping: true });
+}
+
+/** 디자인 점검 경로 목록. 없으면 undefined(전부), 있으면 /로 시작하는 문자열 1개 이상 */
+function parseDesignPaths(value: unknown): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length === 0 || !value.every((item) => typeof item === "string" && item.startsWith("/"))) {
+    throw new HttpError(400, "designPaths는 /로 시작하는 경로 목록이어야 합니다.");
+  }
+  return [...new Set(value as string[])];
+}
+
 async function startRun({ farm, req, res }: Parameters<Handler>[0]): Promise<void> {
   const body = await readBody(req);
   if (body.flowsOnly !== undefined && typeof body.flowsOnly !== "boolean") throw new HttpError(400, "flowsOnly는 true 또는 false여야 합니다.");
   if (body.buttonCheck !== undefined && typeof body.buttonCheck !== "boolean") throw new HttpError(400, "buttonCheck는 true 또는 false여야 합니다.");
-  const flowsOnly = body.flowsOnly === true;
+  const flowIds = parseFlowIds(body.flowIds);
+  if (body.designOnly !== undefined && typeof body.designOnly !== "boolean") throw new HttpError(400, "designOnly는 true 또는 false여야 합니다.");
+  const designPaths = parseDesignPaths(body.designPaths);
+  // 디자인 화면을 골라 돌리면 설치·화면·플로우 점검 없이 그 화면만 본다(「디자인 점검」 탭)
+  const designOnly = body.designOnly === true || designPaths !== undefined;
+  // 플로우를 골라 돌리면 설치·화면 점검 없이 그 플로우만 돈다
+  const flowsOnly = body.flowsOnly === true || flowIds !== undefined;
   // 플로우만 돌릴 때는 설치하지 않으니 버전을 받지 않는다.
-  const version = flowsOnly ? installedVersionLabel : nonEmptyString(body.version, "version");
-  const request = { kind: parseKind(body.kind), version, deviceIds: parseDevices(body.devices), flowsOnly, buttonCheck: body.buttonCheck === true };
+  const version = flowsOnly || designOnly ? installedVersionLabel : nonEmptyString(body.version, "version");
+  const request = {
+    kind: parseKind(body.kind),
+    version,
+    deviceIds: parseDevices(body.devices),
+    flowsOnly,
+    flowIds,
+    buttonCheck: body.buttonCheck === true,
+    ...(designOnly ? { designOnly, designPaths, label: designPaths?.length === 1 ? `디자인 점검 · ${designPaths[0]}` : "디자인 점검" } : {}),
+  };
   const started = farm.startRun(request);
   if (!started.ok) return sendJson(res, 409, { error: started.error });
   sendJson(res, 202, { runId: started.runId });
+}
+
+async function runOne({ farm, url, res }: Parameters<Handler>[0]): Promise<void> {
+  const run = farm.runById(url.searchParams.get("id") ?? "");
+  if (!run) return sendJson(res, 404, { error: "점검 기록을 찾지 못했어요." });
+  sendJson(res, 200, run);
+}
+
+async function startBot({ farm, res }: Parameters<Handler>[0]): Promise<void> {
+  const started = farm.startBot();
+  if (!started.ok) return sendJson(res, 409, { error: started.error });
+  sendJson(res, 202, { started: started.runId });
+}
+
+const issueStatuses = ["checking", "done", "not-issue"] as const;
+
+/** 「문제」 화면에서 상태 바꾸기. 슬랙 메시지도 같이 고친다 */
+async function setIssueStatus({ farm, req, res }: Parameters<Handler>[0]): Promise<void> {
+  const body = await readBody(req);
+  const key = nonEmptyString(body.key, "key");
+  const status = issueStatuses.find((item) => item === body.status);
+  if (!status) throw new HttpError(400, "status는 checking·done·not-issue 중 하나여야 합니다.");
+  if (!(await farm.setIssueStatus(key, status))) return sendJson(res, 404, { error: "모르는 문제예요." });
+  sendJson(res, 200, { ok: true });
 }
 
 async function startExplore({ farm, req, res }: Parameters<Handler>[0]): Promise<void> {
@@ -271,8 +340,20 @@ async function unignorePolicy({ req, res }: Parameters<Handler>[0]): Promise<voi
 /** 카오스 실행 하나. 진행 중이면 지금까지의 스텝 */
 async function chaosRun({ res, url }: Parameters<Handler>[0]): Promise<void> {
   const run = readChaosRun(url.searchParams.get("id") ?? "");
-  if (!run) return sendJson(res, 404, { error: "카오스 실행이 없습니다." });
+  if (!run) return sendJson(res, 404, { error: "봇 점검 실행이 없습니다." });
   sendJson(res, 200, run);
+}
+
+async function botSummary({ res, url }: Parameters<Handler>[0]): Promise<void> {
+  sendJson(res, 200, readBotSummary(url.searchParams.get("id") ?? ""));
+}
+
+/** 봇 점검 원인 한 줄 요약을 지금 만든다(예전 실행·요약 실패 때). Claude가 1~2분 걸릴 수 있다 */
+async function summarizeBot({ farm, req, res }: Parameters<Handler>[0]): Promise<void> {
+  const body = await readBody(req);
+  const summary = await summarizeBotRun(nonEmptyString(body.id, "id"), undefined, farm.app.name);
+  if (!summary) return sendJson(res, 404, { error: "봇 점검 실행이 없습니다." });
+  sendJson(res, 200, summary);
 }
 
 async function resultFile({ farm, res, url }: Parameters<Handler>[0]): Promise<void> {
@@ -352,7 +433,11 @@ const fixedRoutes: Record<string, Handler> = {
   "GET /app": json((farm) => publicAppConfig(farm.app)),
   "POST /run": startRun,
   "POST /run/stop": stopRun,
+  "POST /jobs/stop": stopJob,
   "GET /runs/latest": json((farm) => farm.latestRun()),
+  "GET /runs": json((farm) => farm.runSummaries()),
+  "GET /runs/one": runOne,
+  "GET /design": json((farm) => farm.designPages()),
   "GET /baselines/pending": json((farm) => farm.pendingBaselines()),
   "GET /baselines/candidate": candidate,
   "POST /baselines/confirm": confirmBaselines,
@@ -372,6 +457,12 @@ const fixedRoutes: Record<string, Handler> = {
   "POST /policy/ignore": ignorePolicy,
   "POST /policy/unignore": unignorePolicy,
   "GET /chaos/run": chaosRun,
+  "POST /chaos/start": startBot,
+  "GET /chaos/summary": botSummary,
+  "POST /chaos/summary": summarizeBot,
+  "GET /issues": json((farm) => farm.issues()),
+  "POST /issues/status": setIssueStatus,
+  "GET /daily/latest": json((farm) => farm.latestDailyReport()),
 };
 
 const deviceRoutes: Record<string, Handler> = {
@@ -419,16 +510,52 @@ export function streamIdOf(rawUrl: string | undefined): string | null {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
+/**
+ * 보내고 못 나간 바이트가 이보다 많으면 다음 키프레임까지 건너뛴다 (작성자 판단: 4Mbps 약 1초).
+ * 와이파이가 느린 PC는 쌓인 프레임을 다 받느라 화면이 점점 늦어지고 멈춘 것처럼 보였다(2026-11-17).
+ */
+export const streamMaxBufferedBytes = 512 * 1024;
+/** 끊긴 줄 모르는 연결(와이파이 절전·공유기)을 찾는 핑 간격 (작성자 판단). 두 번 연속 답이 없으면 닫는다 */
+export const streamPingMs = 15_000;
+
+/** 키프레임까지 건너뛰기. 늦은 화면은 오래된 프레임 대신 다음 키프레임부터 다시 그린다 */
+export function createPacketGate(buffered: () => number, maxBuffered = streamMaxBufferedBytes) {
+  let skipping = false;
+  return (key: boolean): boolean => {
+    if (buffered() > maxBuffered) skipping = true;
+    if (!skipping) return true;
+    if (!key || buffered() > maxBuffered) return false;
+    skipping = false;
+    return true;
+  };
+}
+
 /** 첫 메시지 JSON `{ codec, width, height }`, 그 뒤 H.264 패킷(바이너리). */
 async function attachStream(farm: Farm, id: string, socket: WebSocket): Promise<void> {
   let unsubscribe: (() => void) | null = null;
-  socket.on("close", () => unsubscribe?.());
+  let alive = true;
+  socket.on("pong", () => {
+    alive = true;
+  });
+  const ping = setInterval(() => {
+    if (!alive) {
+      socket.terminate();
+      return;
+    }
+    alive = false;
+    socket.ping();
+  }, streamPingMs);
+  socket.on("close", () => {
+    clearInterval(ping);
+    unsubscribe?.();
+  });
+  const pass = createPacketGate(() => socket.bufferedAmount);
   try {
     if ((await farm.platformOf(id)) !== "android") throw new Error("Android 기기만 스트림을 보냅니다. iOS는 mjpeg를 쓰세요.");
     const stop = await farm.watchVideo(id, {
       header: (header) => socket.send(JSON.stringify(header)),
-      packet: (packet) => {
-        if (socket.readyState === WebSocket.OPEN) socket.send(packet);
+      packet: (packet, key) => {
+        if (socket.readyState === WebSocket.OPEN && pass(key)) socket.send(packet);
       },
     });
     if (socket.readyState === WebSocket.OPEN) unsubscribe = stop;
@@ -441,8 +568,9 @@ async function attachStream(farm: Farm, id: string, socket: WebSocket): Promise<
 /**
  * 디바이스팜 서버. farm을 안 주면 앱 설정(`app`)으로 진짜 기기 구성을 만들고
  * 시작 작업(재시작 복구·보관 정리·iOS 세션·자동 점검)을 돈다.
+ * 관문: `.env` `FARM_PASSWORD_HASH`가 있으면 팀 비밀번호 로그인(`auth/`), 없으면 Tailscale 계정·로컬 접속(`access.ts`).
  */
-export function devicePlugin(options: { app: AppConfig; farm?: Farm }): Plugin {
+export function devicePlugin(options: { app: AppConfig; farm?: Farm; gate?: AuthGate }): Plugin {
   const { app, farm } = options;
   return {
     name: "device-farm-devices",
@@ -456,22 +584,28 @@ export function devicePlugin(options: { app: AppConfig; farm?: Farm }): Plugin {
     const active = farm ?? running;
     if (!active) return;
     void running?.start().catch((error: unknown) => console.error(`[farm] 시작 실패: ${errorMessage(error)}`));
+    const gate = options.gate ?? (process.env.FARM_PASSWORD_HASH?.trim() ? createAuthGate({ sessions: dbSessionStore(farmDb()) }) : null);
+    const stopGate = gate?.start();
     const domains = allowedDomains(undefined, app.access.allowedDomains);
-    // 플러그인 configureServer는 Vite 내부 미들웨어보다 먼저 붙는다. 화면 파일까지 이 관문을 지난다.
-    server.middlewares.use(createAccessMiddleware(domains));
+    // 플러그인 configureServer는 Vite 내부 미들웨어보다 먼저 붙는다. 화면 파일·로그인 API까지 이 관문을 지난다.
+    server.middlewares.use(gate ? gate.middleware : createAccessMiddleware(domains));
     server.middlewares.use(deviceMiddleware(active));
     const sockets = new WebSocketServer({ noServer: true });
     server.httpServer?.on("upgrade", (req, socket, head) => {
       const id = streamIdOf(req.url);
-      if (id === null) return;
-      const access = decideAccess({ remoteAddress: req.socket.remoteAddress, headers: req.headers }, domains);
+      // 팀 비밀번호를 켜면 사내망에 열리므로 스트림만이 아니라 모든 업그레이드(Vite HMR 포함)를 본다
+      if (!gate && id === null) return;
+      const access = gate ? gate.upgrade(req) : decideAccess({ remoteAddress: req.socket.remoteAddress, headers: req.headers }, domains);
       if (!access.ok) {
-        socket.end(`HTTP/1.1 ${access.status} ${access.status === 401 ? "Unauthorized" : "Forbidden"}\r\nConnection: close\r\n\r\n`);
+        socket.end(upgradeRefusal(access));
         return;
       }
+      if (id === null) return;
+      if (!gate) setRequestUser(req, access.user);
       sockets.handleUpgrade(req, socket, head, (ws) => void attachStream(active, id, ws));
     });
     server.httpServer?.on("close", () => {
+      stopGate?.();
       sockets.close();
       void running?.stop();
     });

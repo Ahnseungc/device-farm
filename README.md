@@ -25,8 +25,10 @@ Android is driven with adb + Chrome DevTools Protocol (Playwright), iOS with App
 - **Button check and screen map**: records how every button reacts and stitches screens together into a map. Build flows by chaining map blocks.
 - **Flows**: scenarios that start at home and move only by tapping buttons and links. Record them, assemble them from the map, or generate candidates from a PRD with an LLM (optional).
 - **Data QA**: re-calls the GET APIs a screen uses and checks totals and displayed values with plain rules (no LLM).
-- **Exploration and chaos**: breadth-first exploration, plus seeded chaos (back, double tap, back while loading, background, restart).
+- **Exploration and bot check**: breadth-first exploration, plus a seeded chaos bot (tap, fill inputs, back, double tap, back while loading, background, leaving to another app, restart) that starts from deep screens and groups failures by cause.
+- **Layout and design checks**: measures overflow, clipping, overlap, bottom cut-off, and blank screens, and scores each screen against its linked Figma page. Flows can include a "design check" step.
 - **Policy and Figma checks**: detects Confluence policy changes, extracts rules, and compares Figma copy.
+- **History, alerts, and schedule**: run history in SQLite (`farm.db`), a floating panel for every running check with a stop button, opt-in Slack alerts and finish summaries, a nightly run, and a morning Claude summary.
 - **Remote control**: watch the device screen in the browser (Android H.264, iOS MJPEG) and tap it yourself. A device you control is locked for others.
 - **Claude Code (MCP)**: Claude explores the device through MCP tools and turns the paths it finds into flow candidates.
 

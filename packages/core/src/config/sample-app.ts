@@ -53,6 +53,7 @@ export const sampleApp = defineAppConfig({
     { path: "/order/complete", name: "로그인 후 주문 완료 화면이 열린다", when: "주문 완료 화면을 연다", then: "주문 완료 화면이 보인다" },
   ],
   excludedScenarioPaths: ["/order/complete"],
+  introScreens: [{ path: "/benefit/onboarding", button: "시작하기" }],
   qa: { screens: [sampleCartQa] },
   install: { sources: { ios: { dev: "testflight" } }, testflightDevAppName: "Sample Shop DEV" },
 });

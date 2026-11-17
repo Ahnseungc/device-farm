@@ -40,7 +40,7 @@ export interface DroppedCandidate {
   reason: string;
 }
 
-/** 페이지 하나의 뽑기 결과(`test-results/policy/rules/<pageId>.json`) */
+/** 페이지 하나의 뽑기 결과(farm.db `policy_rules`) */
 export interface PageRules {
   pageId: string;
   pageTitle: string;
@@ -215,13 +215,14 @@ export function extractPrompt(title: string, bodyText: string, knownScreens: rea
 }
 
 /** 어긋남 분류(설계 문서 「어긋남 보고」). 버그 후보만 실패·슬랙 대상이다 */
-export type FindingClass = "pending-app" | "app-changed" | "policy-outdated" | "docs-mismatch" | "bug-candidate";
+export type FindingClass = "pending-app" | "app-changed" | "policy-outdated" | "docs-mismatch" | "unverified" | "bug-candidate";
 
 export const findingLabels: Record<FindingClass, string> = {
   "pending-app": "앱 반영 전",
   "app-changed": "문서 갱신 누락 또는 버그",
   "policy-outdated": "정책 문서가 뒤처짐",
   "docs-mismatch": "문서끼리 어긋남",
+  "unverified": "확인 필요(피그마 없음)",
   "bug-candidate": "버그 후보",
 };
 
@@ -241,7 +242,12 @@ export function classifyFinding(rule: Pick<PolicyRule, "since">, screenChanged: 
  * 피그마 쪽을 모르면(`null`) 둘만 보는 분류로 돌아간다.
  */
 export function classifyWithFigma(rule: Pick<PolicyRule, "since">, figmaAgreesWithPolicy: boolean | null, screenChanged: boolean, now: number): FindingClass {
-  if (figmaAgreesWithPolicy === null) return classifyFinding(rule, screenChanged, now);
+  // 피그마로 확인하지 못하면 앱 버그라고 단정하지 않는다. 피그마 연결이 없거나 앱 네이티브 화면·상담 채팅 위젯처럼
+  // 웹 글자에 안 잡히는 것이 2026-11-12 버그 후보 47건 중 다수였다
+  if (figmaAgreesWithPolicy === null) {
+    const finding = classifyFinding(rule, screenChanged, now);
+    return finding === "bug-candidate" ? "unverified" : finding;
+  }
   if (!figmaAgreesWithPolicy) return "policy-outdated";
   return classifyFinding(rule, false, now);
 }

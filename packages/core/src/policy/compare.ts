@@ -43,8 +43,26 @@ export interface CompareContext {
   figmaTexts?: readonly string[] | null;
 }
 
+/**
+ * 문구 비교용으로 맞춘 글자. 공백·문장부호·물결표를 지우고, 숫자 뒤 「이상·이하」를 지운다.
+ * 정책 「0g 이상 ~ 0.1g 미만」과 화면 「0g ~ 0.1g 미만」처럼 표기만 다른 것을 같게 본다(2026-11-12 레벨 안내).
+ */
+export const normalizeCopy = (text: string) =>
+  squash(text)
+    .replace(/(\d[\d,.]*[a-zA-Z%가-힣]{0,2})(이상|이하)/g, "$1")
+    .replace(/[.,!?·•'"‘’“”「」『』()[\]~∼〜～\-–—:;]/g, "");
+
+/** 숫자·단위를 빼고 남는 글자가 이보다 적은 문구는 글자로 확인하지 않는다 (작성자 판단) */
+export const minCheckableLetters = 3;
+
+/**
+ * 「5회」, 「20장」, 「0.00001g」처럼 숫자와 단위뿐인 문구는 화면 어디에 있어도 맞고, 팝업·미션 카드처럼 다른 상태에만 있어도
+ * 「열면 보임」으로 뽑혀 오탐이 많았다. 글자로 확인하지 않고 상황 규칙처럼 센다.
+ */
+export const isCheckableCopy = (expected: string) => (normalizeCopy(expected).replace(/[\d,.%]/g, "").match(/[가-힣a-zA-Z]/g)?.length ?? 0) >= minCheckableLetters + (/\d/.test(expected) ? 1 : 0);
+
 const inFigma = (figmaTexts: readonly string[] | null | undefined, expected: string) =>
-  figmaTexts && figmaTexts.length > 0 ? figmaTexts.map(squash).join("\u0000").includes(squash(expected)) : null;
+  figmaTexts && figmaTexts.length > 0 ? figmaTexts.map(normalizeCopy).join("\u0000").includes(normalizeCopy(expected)) : null;
 
 const failed = (rule: PolicyRule, message: string, context: CompareContext): PolicyCheck => {
   const figma = inFigma(context.figmaTexts, rule.expected ?? "");
@@ -57,18 +75,24 @@ const failed = (rule: PolicyRule, message: string, context: CompareContext): Pol
 
 /** 열자마자 보이는 문구·값 규칙: 기대 글자가 화면에 그대로 있는가(공백 무시) */
 export function compareCopyRules(rules: readonly PolicyRule[], context: CompareContext): PolicyCheck[] {
-  const screenText = squash(context.text);
-  return rulesForScreen(rules, context.path)
-    .filter((rule) => rule.kind !== "behavior" && rule.visibleOnOpen && rule.expected)
+  const screenText = normalizeCopy(context.text);
+  return checkableCopyRules(rules, context.path)
     .map((rule) =>
-      screenText.includes(squash(rule.expected ?? ""))
+      screenText.includes(normalizeCopy(rule.expected ?? ""))
         ? { id: rule.id, title: rule.statement, ok: true, ignoreKey: rule.id, ignoreHash: rule.pageHash, pageId: rule.pageId }
         : failed(rule, `화면에 「${rule.expected}」가 없습니다.`, context),
     );
 }
 
-/** 상황을 만들어야 보이는 규칙(토스트·모달 등). 점검하지 않고 개수만 알린다 */
-export const situationalRules = (rules: readonly PolicyRule[], path: string) => rulesForScreen(rules, path).filter((rule) => rule.kind !== "behavior" && !rule.visibleOnOpen);
+/** 열면 보이고 글자로 확인할 수 있는 문구·값 규칙 */
+const checkableCopyRules = (rules: readonly PolicyRule[], path: string) =>
+  rulesForScreen(rules, path).filter((rule) => rule.kind !== "behavior" && rule.visibleOnOpen && rule.expected && isCheckableCopy(rule.expected));
+
+/** 상황을 만들어야 보이는 규칙(토스트·모달 등)과 글자로 확인하기엔 너무 짧은 숫자 문구. 점검하지 않고 개수만 알린다 */
+export const situationalRules = (rules: readonly PolicyRule[], path: string) => {
+  const checkable = new Set(checkableCopyRules(rules, path).map((rule) => rule.id));
+  return rulesForScreen(rules, path).filter((rule) => rule.kind !== "behavior" && !checkable.has(rule.id));
+};
 
 /** 피그마 문구 비교 결과 목록 하나에 보여 줄 최대 수 (작성자 판단) */
 export const maxCopyDiff = 30;
@@ -91,6 +115,20 @@ export function diffFigmaCopy(figmaTexts: readonly string[], screenText: string)
   const missingOnScreen = [...new Set(figmaTexts.map((text) => text.trim()).filter((text) => isStaticCopy(text) && !screen.includes(squash(text))))];
   const notInFigma = [...new Set(screenText.split("\n").map((line) => line.trim()).filter((line) => isStaticCopy(line) && !figma.includes(squash(line))))];
   return { missingOnScreen: missingOnScreen.slice(0, maxCopyDiff), notInFigma: notInFigma.slice(0, maxCopyDiff) };
+}
+
+/**
+ * 화면 문구 중 피그마에도 있는 비율이 이보다 낮으면 연결된 피그마가 이 화면 디자인이 아니라고 본다.
+ * 정책서 피그마 링크가 캔버스 섹션 통째(문구 3천여 개)라 홈이 다른 기능 섹션과 비교됐다.
+ */
+export const minFigmaCoverage = 0.3;
+
+/** 화면의 고정 문구 줄 중 피그마에 있는 비율. 고정 문구가 없으면 1 */
+export function figmaCoverage(figmaTexts: readonly string[], screenText: string): number {
+  const figma = figmaTexts.map(squash).join("\u0000");
+  const lines = [...new Set(screenText.split("\n").map((line) => line.trim()).filter(isStaticCopy))];
+  if (lines.length === 0) return 1;
+  return lines.filter((line) => figma.includes(squash(line))).length / lines.length;
 }
 
 /**

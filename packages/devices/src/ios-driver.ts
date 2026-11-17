@@ -2,7 +2,7 @@ import { setTimeout as wait } from "node:timers/promises";
 
 import type { AppConfig } from "@device-farm/core/config/app-config";
 import { deepLinkUrl } from "@device-farm/core/device/deep-link";
-import { homeAttempts, type ScreenDriver } from "@device-farm/core/device/driver";
+import { clickLabels, homeAttempts, type ScreenDriver } from "@device-farm/core/device/driver";
 import { markStaleScript } from "@device-farm/core/device/screen-ready";
 
 export const nativeContext = "NATIVE_APP";
@@ -121,8 +121,12 @@ export function openIosDriver(session: WebdriverIO.Browser, appId: string, app: 
     },
     clickButton: async (name, role = "button", match = "exact") => {
       await inWebView();
-      const clicked = await session.execute(clickButtonScript, name, role, match);
-      if (clicked !== true) throw new Error(`"${name}" ${role === "link" ? "링크를" : "버튼을"} 찾지 못했습니다.`);
+      let clicked = false;
+      for (const label of clickLabels(app, name, role)) {
+        clicked = (await session.execute(clickButtonScript, label, role, match)) === true;
+        if (clicked) break;
+      }
+      if (!clicked) throw new Error(`"${name}" ${role === "link" ? "링크를" : "버튼을"} 찾지 못했습니다.`);
     },
     goHome: async () => {
       // Android와 같다: 열린 WebView 전부에 스택 닫기를 보내고 하단 홈 탭을 누른다. 못 찾으면 화면 상단 뒤로 버튼을 누르고 다시 한다.
@@ -136,8 +140,12 @@ export function openIosDriver(session: WebdriverIO.Browser, appId: string, app: 
           }
           await wait(stackSettleMs);
           await session.switchContext(await findWebView(session));
-          const clicked = await session.execute(clickButtonScript, homeTabName, "link");
-          if (clicked !== true) throw new Error(`하단 「${homeTabName}」 탭을 찾지 못했습니다.`);
+          let clicked = false;
+          for (const label of clickLabels(app, homeTabName, "link")) {
+            clicked = (await session.execute(clickButtonScript, label, "link")) === true;
+            if (clicked) break;
+          }
+          if (!clicked) throw new Error(`하단 「${homeTabName}」 탭을 찾지 못했습니다.`);
           return;
         } catch (error) {
           lastError = error;

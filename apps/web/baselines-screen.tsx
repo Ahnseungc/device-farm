@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { HStack, Text, VStack } from "@seed-design/react";
 
+import { LoadingState } from "./loading-state";
+import { MetaLine } from "./meta-line";
+import { FloatingNotice } from "./floating-notice";
 import { api, candidateImageUrl, errorMessage, usePoll } from "./api-client";
 import { t } from "./i18n";
 import { ActionButton } from "./seed-design/ui/action-button";
-import { Badge } from "./seed-design/ui/badge";
 import { Callout } from "./seed-design/ui/callout";
-import { Checkbox } from "./seed-design/ui/checkbox";
-import { ProgressCircle } from "./seed-design/ui/progress-circle";
 import { ResultSection } from "./seed-design/ui/result-section";
 import "./baselines.css";
 
@@ -15,7 +15,7 @@ import "./baselines.css";
 function splitKey(key: string): { device: string; scenario: string } {
   const parts = key.split("|");
   if (parts.length < 3) return { device: t("기타", "Other"), scenario: key };
-  return { device: `${parts[0]} · ${parts[1]}`, scenario: parts.slice(2).join("|") };
+  return { device: `${parts[0]} ${parts[1]}`, scenario: parts.slice(2).join("|") };
 }
 
 function groupByDevice(keys: string[]): Map<string, string[]> {
@@ -42,7 +42,7 @@ export function BaselinesScreen() {
     setBusy(true);
     try {
       const { confirmed } = await api.confirmBaselines(names);
-      setMessage({ text: t(`기준 화면 ${confirmed}개를 확정했습니다.`, `Confirmed ${confirmed} baseline(s).`), error: false });
+      setMessage({ text: t(`기준 화면 ${confirmed}개를 확정했어요. 다음 점검부터 이 화면과 비교해요.`, `Confirmed ${confirmed} baseline(s). The next check compares against them.`), error: false });
       setSelected([]);
       await pending.reload();
     } catch (error) {
@@ -52,98 +52,75 @@ export function BaselinesScreen() {
     }
   }
 
+  if (pending.data === undefined) return pending.error ? <Callout tone="critical" description={pending.error} /> : <LoadingState />;
+
   return (
-    <VStack gap="x4" className="baselines-page">
-      <div className="baselines-toolbar">
-        <VStack gap="x0_5">
-          <Text as="h2" textStyle="t5Bold">
-            {t("기준 후보", "Baseline candidates")}
+    <VStack gap="x5" className="baselines-page bl-page">
+      <FloatingNotice notice={message} onClose={() => setMessage(null)} />
+      <HStack justify="space-between" align="flex-end" gap="x3" wrap="wrap">
+        <VStack gap="x1">
+          <Text as="h1" textStyle="t7Bold">
+            {keys.length > 0 ? t(`확정할 기준 화면 ${keys.length}개`, `${keys.length} baselines to confirm`) : t("기준 화면", "Baselines")}
           </Text>
-          <Text textStyle="t3Regular" color="fg.neutralSubtle">
-            {keys.length > 0 ? t(`후보 ${keys.length}개 · 고른 ${chosen.length}개`, `${keys.length} candidates · ${chosen.length} selected`) : t("확정할 후보가 없어요", "Nothing to confirm")}
+          <Text textStyle="t4Regular" color="fg.neutralMuted">
+            {t(
+              "지난번과 화면이 달라졌는지 비교할 기준 사진이에요. 새 빌드에서 처음 본 화면은 여기 후보로 올라와요.",
+              "Reference shots used to tell whether a screen changed. Screens seen for the first time in a new build show up here as candidates.",
+            )}
           </Text>
         </VStack>
-        <HStack gap="x2" wrap="wrap">
-          <ActionButton
-            variant="neutralSolid"
-            size="medium"
-            loading={busy}
-            disabled={busy || chosen.length === 0}
-            onClick={() => void confirm(chosen)}
-          >
-            {t(`고른 ${chosen.length}개 확정`, `Confirm ${chosen.length} selected`)}
+        {keys.length > 0 ? (
+          <ActionButton variant="brandSolid" size="medium" loading={busy && chosen.length === 0} disabled={busy} onClick={() => void confirm()}>
+            {t(`전부 확정 (${keys.length})`, `Confirm all (${keys.length})`)}
           </ActionButton>
-          <ActionButton
-            variant="neutralWeak"
-            size="medium"
-            disabled={busy || keys.length === 0}
-            onClick={() => void confirm()}
-          >
-            {t("전부 확정", "Confirm all")}
-          </ActionButton>
-        </HStack>
-      </div>
+        ) : null}
+      </HStack>
 
-      {message ? (
-        <Callout tone={message.error ? "critical" : "positive"} description={message.text} />
-      ) : null}
-      {pending.error ? <Callout tone="critical" description={pending.error} /> : null}
-
-      {pending.data === undefined && !pending.error ? (
-        <HStack gap="x2" justify="center" py="x8">
-          <ProgressCircle aria-label={t("불러오는 중", "Loading")} />
-          <Text color="fg.neutralMuted">{t("불러오는 중", "Loading")}</Text>
-        </HStack>
-      ) : null}
-
-      {pending.data && keys.length === 0 ? (
+      {keys.length === 0 ? (
         <div className="baselines-card">
-          <ResultSection
-            size="medium"
-            title={t("확정할 후보가 없어요", "Nothing to confirm")}
-            description={t(
-              "점검을 한 번 돌리면 기기별 후보가 생겨요.\n후보를 확인하고 기준 화면으로 확정해 주세요.",
-              "Run a check once to get candidates per device.\nReview them and confirm them as baselines.",
-            )}
-          />
+          <ResultSection size="medium" title={t("확정할 후보가 없어요", "Nothing to confirm")} description={t("새 빌드를 점검하면 처음 본 화면이 후보로 올라와요.\n맞는 화면이면 확정해 다음 점검의 기준으로 써요.", "Checking a new build adds screens seen for the first time as candidates.\nConfirm the right ones to use as the baseline for the next check.")} />
         </div>
       ) : null}
 
       {[...groupByDevice(keys)].map(([device, deviceKeys]) => (
-        <section key={device} className="baselines-card" aria-label={t(`${device} 기준 후보`, `${device} baseline candidates`)}>
-          <HStack gap="x2" align="center">
-            <Text as="h3" textStyle="t4Bold">
-              {device}
-            </Text>
-            <Badge tone="informative" variant="weak">
-              {t(`${deviceKeys.length}개`, String(deviceKeys.length))}
-            </Badge>
-          </HStack>
+        <section key={device} className="bl-group" aria-label={t(`${device} 기준 후보`, `${device} baseline candidates`)}>
+          <Text as="h2" textStyle="t5Bold"><MetaLine items={[device, t(`${deviceKeys.length}개`, String(deviceKeys.length))]} /></Text>
           <div className="baselines-grid">
             {deviceKeys.map((key) => {
               const { scenario } = splitKey(key);
               const checked = chosen.includes(key);
               return (
-                <div key={key} className="baselines-candidate" data-checked={checked || undefined}>
-                  {/* 이미지는 마우스 편의용 토글. 키보드·스크린 리더는 아래 체크박스를 쓴다. */}
-                  <img
-                    src={candidateImageUrl(key)}
-                    alt={t(`${scenario} 후보 화면`, `${scenario} candidate screen`)}
-                    className="baselines-shot"
-                    onClick={() => toggle(key)}
-                  />
-                  <Checkbox
-                    label={scenario}
-                    size="medium"
-                    checked={checked}
-                    onCheckedChange={() => toggle(key)}
-                  />
-                </div>
+                <button key={key} type="button" className="bl-tile" aria-pressed={checked} onClick={() => toggle(key)}>
+                  <span className="bl-shot-wrap">
+                    <img src={candidateImageUrl(key)} alt={t(`${scenario} 후보 화면`, `${scenario} candidate screen`)} className="baselines-shot" loading="lazy" />
+                    <span className="bl-check" aria-hidden="true">
+                      ✓
+                    </span>
+                  </span>
+                  <Text textStyle="t3Medium" className="bl-name">
+                    {scenario}
+                  </Text>
+                </button>
               );
             })}
           </div>
         </section>
       ))}
+
+      {/* 고르면 아래에 떠서 본문을 밀지 않는다 */}
+      {chosen.length > 0 ? (
+        <div className="bl-bar" role="region" aria-label={t("고른 후보", "Selected candidates")}>
+          <Text textStyle="t4Bold">{t(`${chosen.length}개 골랐어요`, `${chosen.length} selected`)}</Text>
+          <HStack gap="x2">
+            <ActionButton variant="ghost" size="medium" onClick={() => setSelected([])}>
+              {t("고르기 취소", "Clear selection")}
+            </ActionButton>
+            <ActionButton variant="brandSolid" size="medium" loading={busy} disabled={busy} onClick={() => void confirm(chosen)}>
+              {t("확정하기", "Confirm")}
+            </ActionButton>
+          </HStack>
+        </div>
+      ) : null}
     </VStack>
   );
 }

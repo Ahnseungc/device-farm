@@ -1,0 +1,162 @@
+/* 진행 중 플로팅(오른쪽 아래)과 완료 알림 카드(위쪽 가운데). SEED 토큰만 쓴다. */
+.activity-dock {
+  position: fixed;
+  right: var(--seed-dimension-x4);
+  bottom: var(--seed-dimension-x4);
+  z-index: 40;
+  width: min(320px, calc(100% - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x1);
+  padding: var(--seed-dimension-x3);
+  background: var(--seed-color-bg-layer-floating);
+  border: 1px solid var(--seed-color-stroke-neutral-muted);
+  border-radius: var(--seed-radius-r4);
+  box-shadow: var(--seed-shadow-s2);
+}
+
+/* 한 줄: 누르면 그 탭을 여는 본문 + 오른쪽 「중지」 */
+.activity-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--seed-dimension-x1);
+  width: 100%;
+}
+
+.activity-item-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--seed-dimension-x2);
+  padding: var(--seed-dimension-x2);
+  background: none;
+  border: none;
+  border-radius: var(--seed-radius-r2);
+  text-align: left;
+  cursor: pointer;
+}
+
+.activity-item-open:hover {
+  background: var(--seed-color-bg-neutral-weak);
+}
+
+.activity-stop {
+  flex: none;
+  margin-top: var(--seed-dimension-x2);
+  padding: var(--seed-dimension-x1) var(--seed-dimension-x2_5);
+  background: var(--seed-color-bg-critical-weak);
+  color: var(--seed-color-fg-critical);
+  border: none;
+  border-radius: var(--seed-radius-full);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.activity-stop:hover:not(:disabled) {
+  background: var(--seed-color-bg-critical-weak-pressed);
+}
+
+.activity-stop:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.activity-item-body {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x0_5);
+}
+
+.activity-item-detail {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.activity-bar {
+  display: block;
+  height: 4px;
+  margin-top: var(--seed-dimension-x1);
+  background: var(--seed-color-bg-neutral-weak);
+  border-radius: var(--seed-radius-full);
+  overflow: hidden;
+}
+
+.activity-bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--seed-color-bg-brand-solid);
+  transform-origin: left center;
+  transition: transform var(--farm-dur-medium) var(--farm-ease-out);
+}
+
+.activity-toasts {
+  position: fixed;
+  top: var(--seed-dimension-x4);
+  left: 50%;
+  z-index: 50;
+  transform: translateX(-50%);
+  width: min(400px, calc(100% - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x2);
+  pointer-events: none;
+}
+
+.activity-toast {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x0_5);
+  width: 100%;
+  padding: var(--seed-dimension-x3) var(--seed-dimension-x4);
+  background: var(--seed-color-bg-layer-floating);
+  border: 1px solid var(--seed-color-stroke-neutral-muted);
+  border-radius: var(--seed-radius-r3);
+  box-shadow: var(--seed-shadow-s3);
+  text-align: left;
+  cursor: pointer;
+  animation: activity-toast-in var(--farm-dur-short) var(--farm-ease-out);
+}
+
+.activity-toast-positive {
+  border-color: color-mix(in srgb, var(--seed-color-fg-positive) 40%, var(--seed-color-stroke-neutral-muted));
+}
+
+.activity-toast-critical {
+  border-color: color-mix(in srgb, var(--seed-color-fg-critical) 40%, var(--seed-color-stroke-neutral-muted));
+}
+
+.activity-toast.is-leaving {
+  animation: activity-toast-out var(--farm-dur-short) var(--farm-ease-in) forwards;
+}
+
+@keyframes activity-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes activity-toast-out {
+  to {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .activity-toast,
+  .activity-toast.is-leaving {
+    animation-duration: 0.01s;
+  }
+}

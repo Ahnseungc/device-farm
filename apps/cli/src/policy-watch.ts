@@ -1,7 +1,7 @@
 // 정책 바뀜 감지: npm run policy-watch
 // Confluence 정책 스페이스에서 제목 규칙(policy.confluence.titleQuery)에 맞는 페이지 + policy/sources.json 등록 페이지의 본문 해시를 지난 스냅샷과 비교한다(LLM 없음).
-// 결과: test-results/policy/snapshot.json(최신), changes.jsonl(바뀜 기록)
-// 규칙 하나만 뽑기(Claude): npm run policy-watch -- --extract <pageId> → test-results/policy/rules/<pageId>.json
+// 결과: test-results/farm.db policy_pages(최신 스냅샷), policy_changes(바뀜 기록)
+// 규칙 하나만 뽑기(Claude): npm run policy-watch -- --extract <pageId> → test-results/farm.db policy_rules
 // 피그마만 새로(프론트 코드 → 화면별 노드, 노드 문구): npm run policy-watch -- --figma
 import { isRecentlyChanged } from "@device-farm/core/policy/snapshot";
 import { confluenceConfigFromEnv, fetchPolicySnapshot } from "@device-farm/engine/policy/confluence";

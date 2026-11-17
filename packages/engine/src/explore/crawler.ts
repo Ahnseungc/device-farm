@@ -94,6 +94,8 @@ export interface CrawlInput {
   runId?: string;
   deviceId?: string;
   settleMs?: number;
+  /** 디바이스팜 「중지」. 지금 경로를 마치고 멈춘다 */
+  signal?: AbortSignal;
 }
 
 function clickDepth(actions: readonly ExploreAction[]): number {
@@ -161,7 +163,7 @@ export async function crawl(input: CrawlInput): Promise<ExploreRun> {
   const seen = new Set<string>();
   const queue: ExplorePath[] = [{ id: pathId([]), actions: [] }];
   takeBlocked(input); // 시작 전 쌓인 차단은 어느 경로 것도 아니다.
-  while (queue.length > 0 && now() <= deadline) {
+  while (queue.length > 0 && now() <= deadline && !input.signal?.aborted) {
     const path = queue.shift();
     if (!path) break;
     const result = await visit(input, run, path, seen);

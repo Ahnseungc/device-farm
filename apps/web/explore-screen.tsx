@@ -3,17 +3,17 @@ import { HStack, Text, VStack } from "@seed-design/react";
 
 import type { ExploreAction, ExploreIssue, ExploreRun } from "@device-farm/core/explore/actions";
 
+import { issueLabel } from "./issue-labels";
+import { LoadingState } from "./loading-state";
+import { MetaLine } from "./meta-line";
+import { FloatingNotice, type Notice } from "./floating-notice";
 import { api, errorMessage, joinPath, resultFileUrl, usePoll, type DeviceWithState } from "./api-client";
 import { plural, t } from "./i18n";
 import { ActionButton } from "./seed-design/ui/action-button";
 import { Badge } from "./seed-design/ui/badge";
 import { Callout } from "./seed-design/ui/callout";
-import { Checkbox, CheckboxGroup } from "./seed-design/ui/checkbox";
-import { ProgressCircle } from "./seed-design/ui/progress-circle";
 import { ResultSection } from "./seed-design/ui/result-section";
 import "./explore.css";
-
-type Notice = { text: string; error: boolean };
 
 function actionLabel(action: ExploreAction): string {
   if (action.kind === "fill") return `${t("입력", "Fill")} ${action.label}`;
@@ -22,89 +22,71 @@ function actionLabel(action: ExploreAction): string {
 
 function deviceName(devices: DeviceWithState[], id: string): string {
   const device = devices.find((item) => item.id === id);
-  return device ? `${device.model} · ${device.osVersion}` : id;
+  return device ? `${device.model} ${device.osVersion}` : id;
 }
 
 export function ExploreScreen() {
   const devices = usePoll(api.devices);
   const runs = usePoll(api.latestExplore);
-  const list = devices.data ?? [];
-
-  return (
-    <VStack gap="x4" className="explore-page">
-      <ExploreForm devices={list} onStarted={() => void runs.reload()} />
-      <Callout
-        tone="informative"
-        title={t("허용 목록", "Allowlist")}
-        description={t("허용 목록은 화면에서 고치지 않습니다. explore/allowlist.json을 고쳐 주세요.", "The allowlist is not edited here. Edit explore/allowlist.json instead.")}
-      />
-      {runs.error ? <Callout tone="critical" description={runs.error} /> : null}
-      {runs.data === undefined && !runs.error ? (
-        <HStack gap="x2" justify="center" py="x8">
-          <ProgressCircle aria-label={t("불러오는 중", "Loading")} />
-          <Text color="fg.neutralMuted">{t("불러오는 중", "Loading")}</Text>
-        </HStack>
-      ) : null}
-      {runs.data && runs.data.length === 0 ? (
-        <div className="explore-card">
-          <ResultSection
-            size="medium"
-            title={t("아직 탐색한 기록이 없어요", "No explore runs yet")}
-            description={t("위에서 기기를 고르고 탐색을 실행하면 결과가 여기에 보여요.", "Pick devices above and run Explore; the results show up here.")}
-          />
-        </div>
-      ) : null}
-      {(runs.data ?? []).map((run) => (
-        <RunSection key={`${run.runId}-${run.deviceId}`} run={run} title={deviceName(list, run.deviceId)} />
-      ))}
-    </VStack>
-  );
-}
-
-function ExploreForm({ devices, onStarted }: { devices: DeviceWithState[]; onStarted: () => void }) {
   const [selected, setSelected] = useState<string[]>([]);
-  const [message, setMessage] = useState<Notice | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
   const [pending, setPending] = useState(false);
-
-  const toggle = (id: string) =>
-    setSelected((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
+  // 기기·탐색 기록이 다 온 뒤에 그린다(늦게 온 기록이 끼어들며 밀어내지 않게)
+  if ((devices.data === undefined && !devices.error) || (runs.data === undefined && !runs.error)) return <LoadingState />;
+  const list = devices.data ?? [];
+  const toggle = (id: string) => setSelected((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
 
   async function start() {
     setPending(true);
     try {
-      const { runId } = await api.startExplore(selected.length > 0 ? selected : "all");
-      setMessage({ text: `${t("탐색을 시작했습니다.", "Explore started.")} (${runId})`, error: false });
-      onStarted();
+      await api.startExplore(selected.length > 0 ? selected : "all");
+      setNotice({ text: t("탐색을 시작했어요. 경로마다 결과가 아래에 쌓여요.", "Explore started. Results for each path stack up below."), error: false });
+      await runs.reload();
     } catch (error) {
-      setMessage({ text: errorMessage(error), error: true });
+      setNotice({ text: errorMessage(error), error: true });
     } finally {
       setPending(false);
     }
   }
 
   return (
-    <section className="explore-card" aria-label={t("탐색 실행", "Run explore")}>
-      <Text as="h2" textStyle="t5Bold">
-        {t("탐색 실행 (dev 빌드)", "Run explore (dev build)")}
-      </Text>
-      <CheckboxGroup label={t("기기 (고르지 않으면 전체)", "Devices (all if none selected)")}>
-        {devices.map((device) => (
-          <Checkbox
-            key={device.id}
-            size="medium"
-            label={`${device.model} · ${device.osVersion}`}
-            checked={selected.includes(device.id)}
-            onCheckedChange={() => toggle(device.id)}
-          />
-        ))}
-      </CheckboxGroup>
-      <HStack gap="x3" align="center" wrap="wrap">
-        <ActionButton variant="neutralSolid" size="medium" loading={pending} disabled={pending} onClick={() => void start()}>
-          {t("탐색 실행", "Run explore")}
+    <VStack gap="x5" className="explore-page">
+      <FloatingNotice notice={notice} onClose={() => setNotice(null)} />
+      <HStack justify="space-between" align="flex-end" gap="x3" wrap="wrap">
+        <VStack gap="x1">
+          <Text as="h1" textStyle="t7Bold">
+            {t("탐색", "Explore")}
+          </Text>
+          <Text textStyle="t4Regular" color="fg.neutralMuted">
+            {t("버튼을 차례로 눌러 갈 수 있는 길을 훑고, 오류가 난 길은 다시 돌려 확인해요. dev 빌드에서만 돌아요.", "Taps through buttons to cover every reachable path, then replays the ones that errored. Runs on dev builds only.")}
+          </Text>
+        </VStack>
+        <ActionButton variant="brandSolid" size="medium" loading={pending} disabled={pending || list.length === 0} onClick={() => void start()}>
+          {selected.length > 0 ? t(`${selected.length}대로 탐색 시작`, `Explore on ${plural(selected.length, "device")}`) : t("탐색 시작", "Start explore")}
         </ActionButton>
-        {message ? <NoticeText notice={message} /> : null}
       </HStack>
-    </section>
+      {list.length > 1 ? (
+        <div className="explore-devices" role="group" aria-label={t("탐색할 기기(고르지 않으면 전체)", "Devices to explore (all if none selected)")}>
+          {list.map((device) => (
+            <button key={device.id} type="button" className="explore-device" aria-pressed={selected.includes(device.id)} onClick={() => toggle(device.id)}>
+              {`${device.model} ${device.osVersion}`}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {runs.error ? <Callout tone="critical" description={runs.error} /> : null}
+      {runs.data && runs.data.length === 0 ? (
+        <div className="explore-card">
+          <ResultSection size="medium" title={t("아직 탐색한 기록이 없어요", "No explore runs yet")} description={t("「탐색 시작」을 누르면 결과가 여기에 쌓여요.", "Press “Start explore” and the results stack up here.")} />
+        </div>
+      ) : null}
+      {(runs.data ?? []).map((run) => (
+        <RunSection key={`${run.runId}-${run.deviceId}`} run={run} title={deviceName(list, run.deviceId)} />
+      ))}
+      <Text textStyle="t3Regular" color="fg.neutralSubtle">
+        {t("데이터를 바꾸는 요청은 막아요. 열어 줄 요청은 explore/allowlist.json에서 고쳐요.", "Requests that change data are blocked. Allow specific ones in explore/allowlist.json.")}
+      </Text>
+    </VStack>
   );
 }
 
@@ -119,47 +101,45 @@ function NoticeText({ notice }: { notice: Notice }) {
 function RunSection({ run, title }: { run: ExploreRun; title: string }) {
   const actionsOf = (pathId: string) => run.paths.find((item) => item.id === pathId)?.actions ?? [];
   return (
-    <section className="explore-card" aria-label={t(`${title} 탐색 결과`, `${title} explore results`)}>
-      <div className="explore-head">
-        <Text as="h2" textStyle="t5Bold">
-          {title}
-        </Text>
-        <HStack gap="x1_5" wrap="wrap">
-          <Badge tone="neutral" variant="weak">{t(`경로 ${run.paths.length}개`, plural(run.paths.length, "path"))}</Badge>
-          <Badge tone="positive" variant="weak">{t(`깨끗한 경로 ${run.cleanPathIds.length}개`, `${run.cleanPathIds.length} clean`)}</Badge>
-          <Badge tone="informative" variant={run.finishedAt ? "weak" : "outline"}>
-            {run.finishedAt ? t("끝남", "Finished") : t("진행 중", "Running")}
-          </Badge>
+    <section className="explore-run" aria-label={t(`${title} 탐색 결과`, `${title} explore results`)}>
+      <div className="explore-hero">
+        <HStack gap="x2" align="center" wrap="wrap">
+          <Text as="h2" textStyle="t6Bold">
+            {run.issues.length > 0
+              ? t(`길 ${run.paths.length}개를 훑어 오류 ${run.issues.length}건을 찾았어요`, `Covered ${plural(run.paths.length, "path")} and found ${plural(run.issues.length, "error")}`)
+              : t(`길 ${run.paths.length}개를 훑었는데 오류가 없었어요`, `Covered ${plural(run.paths.length, "path")} with no errors`)}
+          </Text>
+          {run.finishedAt ? null : (
+            <Badge tone="informative" variant="weak">
+              {t("도는 중", "Running")}
+            </Badge>
+          )}
         </HStack>
+        <Text textStyle="t3Regular" color="fg.neutralSubtle"><MetaLine items={[title, t(`깨끗한 길 ${run.cleanPathIds.length}개`, `${run.cleanPathIds.length} clean`), t(`막은 요청 ${run.blocked.length}건`, plural(run.blocked.length, "blocked request"))]} /></Text>
       </div>
 
-      <VStack gap="x2" align="stretch">
-        <Text as="h3" textStyle="t4Bold">
-          {t(`오류 ${run.issues.length}건`, `Issues: ${run.issues.length}`)}
-        </Text>
-        {run.issues.map((issue, index) => (
-          <IssueItem key={`${issue.pathId}-${index}`} run={run} issue={issue} actions={actionsOf(issue.pathId)} />
-        ))}
-      </VStack>
+      {run.issues.length > 0 ? (
+        <VStack gap="x3">
+          {run.issues.map((issue, index) => (
+            <IssueItem key={`${issue.pathId}-${index}`} run={run} issue={issue} actions={actionsOf(issue.pathId)} />
+          ))}
+        </VStack>
+      ) : null}
 
       {run.replayFailures.length > 0 ? (
-        <VStack gap="x2" align="stretch">
-          <Text as="h3" textStyle="t4Bold">
-            {t(`재생 실패 ${run.replayFailures.length}건`, `Replay failures: ${run.replayFailures.length}`)}
-          </Text>
+        <details className="explore-more">
+          <summary>{t(`다시 돌리기 실패 ${run.replayFailures.length}건`, `Replay failures: ${run.replayFailures.length}`)}</summary>
           {run.replayFailures.map((failure) => (
             <Text key={failure.pathId} textStyle="t3Regular" color="fg.neutralMuted">
               {failure.pathId}: {failure.message}
             </Text>
           ))}
-        </VStack>
+        </details>
       ) : null}
 
-      <VStack gap="x2" align="stretch">
-        <Text as="h3" textStyle="t4Bold">
-          {t(`차단된 요청 ${run.blocked.length}건`, `Blocked requests: ${run.blocked.length}`)}
-        </Text>
-        {run.blocked.length > 0 ? (
+      {run.blocked.length > 0 ? (
+        <details className="explore-more">
+          <summary>{t(`막은 요청 ${run.blocked.length}건`, `Blocked requests: ${run.blocked.length}`)}</summary>
           <div className="explore-scroll">
             <table className="explore-table">
               <thead>
@@ -167,7 +147,7 @@ function RunSection({ run, title }: { run: ExploreRun; title: string }) {
                   <th scope="col">{t("메서드", "Method")}</th>
                   <th scope="col">{t("경로", "Path")}</th>
                   <th scope="col">{t("이유", "Reason")}</th>
-                  <th scope="col">{t("탐색 경로", "Explore path")}</th>
+                  <th scope="col">{t("탐색 길", "Explore path")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -182,8 +162,8 @@ function RunSection({ run, title }: { run: ExploreRun; title: string }) {
               </tbody>
             </table>
           </div>
-        ) : null}
-      </VStack>
+        </details>
+      ) : null}
     </section>
   );
 }
@@ -202,7 +182,7 @@ function IssueItem({ run, issue, actions }: IssueItemProps) {
     setBusy(true);
     try {
       const issues = await api.replay({ runId: run.runId, deviceId: run.deviceId, pathId: issue.pathId });
-      const text = issues.length > 0 ? `${t("다시 나옴", "Reproduced")}: ${issues.map((item) => item.kind).join(", ")}` : t("다시 돌렸더니 오류가 없습니다.", "Replayed with no errors.");
+      const text = issues.length > 0 ? `${t("다시 나왔어요", "Reproduced")}: ${issues.map((item) => issueLabel(item.kind)).join(", ")}` : t("다시 돌렸더니 오류가 없어요.", "Replayed with no errors.");
       setReplayText({ text, error: false });
     } catch (error) {
       setReplayText({ text: errorMessage(error), error: true });
@@ -214,11 +194,13 @@ function IssueItem({ run, issue, actions }: IssueItemProps) {
   return (
     <article className="explore-issue">
       <HStack gap="x2" align="center" wrap="wrap">
-        <Badge tone="critical" variant="solid">
-          {issue.kind}
+        <Badge tone="critical" variant="weak">
+          {issueLabel(issue.kind)}
         </Badge>
-        <Text textStyle="t4Regular">{issue.message}</Text>
       </HStack>
+      <Text textStyle="t4Regular" className="explore-issue-message">
+        {issue.message}
+      </Text>
       <div className="explore-path" role="list" aria-label={t("재현 경로", "Steps to reproduce")}>
         {actions.length === 0 ? (
           <span role="listitem">
@@ -228,7 +210,8 @@ function IssueItem({ run, issue, actions }: IssueItemProps) {
           </span>
         ) : null}
         {actions.map((action, index) => (
-          <span key={index} role="listitem">
+          <span key={index} role="listitem" className="explore-path-step">
+            {index > 0 ? <span aria-hidden="true">›</span> : null}
             <Badge tone="neutral" variant="weak">
               {actionLabel(action)}
             </Badge>
@@ -254,7 +237,8 @@ function IssueItem({ run, issue, actions }: IssueItemProps) {
         <ActionButton variant="neutralWeak" size="small" loading={busy} disabled={busy} onClick={() => void replay()}>
           {t("다시 돌리기", "Replay")}
         </ActionButton>
-        {replayText ? <NoticeText notice={replayText} /> : null}
+        {/* 다시 돌린 결과 자리를 미리 둔다(나타날 때 카드가 들썩이지 않게) */}
+        <span className="explore-replay">{replayText ? <NoticeText notice={replayText} /> : null}</span>
       </HStack>
     </article>
   );

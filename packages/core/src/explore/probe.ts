@@ -20,6 +20,8 @@ export interface LayoutSnapshot {
 }
 
 export const maxOffscreen = 20;
+/** 하단 가림 허용 오차(px). 정수가 아닌 화면 배율(갤럭시 등)에서 0.4px쯤 넘는 반올림을 가림으로 보지 않는다. 화면 깨짐 점검(layout.ts)과 같은 1px */
+export const bottomCoverTolerancePx = 1;
 
 /**
  * WebView에서 평가하는 식. 바깥 변수를 쓰지 않는다.
@@ -87,11 +89,15 @@ export type IssueKind =
   | "stuck"
   | "overflow"
   | "offscreen"
-  | "bottom-covered";
+  | "bottom-covered"
+  /** 봇 점검: 새 화면에서 잰 화면 깨짐 점검(넘침·잘림·겹침·하단 잘림) 실패 */
+  | "layout";
 
 export interface Issue {
   kind: IssueKind;
   message: string;
+  /** 로그를 낸 화면 경로(로그 수집기가 알 때만). 없으면 그 단계의 화면으로 본다 */
+  screen?: string;
 }
 
 export function layoutIssues(snapshot: LayoutSnapshot): Issue[] {
@@ -107,7 +113,7 @@ export function layoutIssues(snapshot: LayoutSnapshot): Issue[] {
   }
   const limit = snapshot.viewportHeight - snapshot.safeAreaBottom;
   for (const item of snapshot.bottomFixed) {
-    if (item.bottom > limit) {
+    if (item.bottom > limit + bottomCoverTolerancePx) {
       issues.push({ kind: "bottom-covered", message: `하단 가림 ${item.label} (bottom ${item.bottom} > ${limit})` });
     }
   }
@@ -150,7 +156,7 @@ function isAllowedWrite(method: string, url: string, allowlist: Allowlist | unde
   return decideRequest(method, pathnameOf(url), allowlist, rules).allow;
 }
 
-function logIssue(entry: LogEntry, allowlist: Allowlist | undefined, rules: GuardRules): Issue | null {
+function logIssueOf(entry: LogEntry, allowlist: Allowlist | undefined, rules: GuardRules): Issue | null {
   if (entry.source === "console") return { kind: "console", message: entry.text };
   if (entry.source === "crash") return { kind: "crash", message: entry.text };
   if (entry.source !== "network") return null;
@@ -158,6 +164,11 @@ function logIssue(entry: LogEntry, allowlist: Allowlist | undefined, rules: Guar
   // 형식이 다른 줄은 판단하지 않는다. 수집기는 formatNetworkLog로 남긴다.
   if (!parsed) return null;
   return networkIssue({ ...parsed, allowedWrite: isAllowedWrite(parsed.method, parsed.url, allowlist, rules) });
+}
+
+function logIssue(entry: LogEntry, allowlist: Allowlist | undefined, rules: GuardRules): Issue | null {
+  const issue = logIssueOf(entry, allowlist, rules);
+  return issue && entry.page ? { ...issue, screen: entry.page } : issue;
 }
 
 async function pageIssues(driver: ScreenDriver): Promise<Issue[]> {

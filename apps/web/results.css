@@ -169,3 +169,209 @@
 .failure-log-meta {
   color: var(--seed-color-fg-neutral-subtle);
 }
+
+/* 「점검 기록」 목록: 종류 칩 · 버전 묶음(접기) · 실행 줄 */
+.runs-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--seed-dimension-x1_5);
+}
+
+.runs-chip {
+  all: unset;
+  padding: var(--seed-dimension-x1_5) var(--seed-dimension-x3);
+  border: 1px solid var(--seed-color-stroke-neutral-muted);
+  border-radius: var(--seed-radius-full);
+  background: var(--seed-color-bg-layer-default);
+  color: var(--seed-color-fg-neutral-muted);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.runs-chip[aria-pressed="true"] {
+  border-color: var(--seed-color-bg-neutral-inverted);
+  background: var(--seed-color-bg-neutral-inverted);
+  color: var(--seed-color-fg-neutral-inverted);
+  font-weight: 600;
+}
+
+.runs-chip:focus-visible,
+.runs-row:focus-visible {
+  outline: 2px solid var(--seed-color-stroke-focus-ring);
+  outline-offset: 2px;
+}
+
+.runs-group {
+  background: var(--seed-color-bg-layer-default);
+  border: 1px solid var(--seed-color-stroke-neutral-muted);
+  border-radius: var(--seed-radius-r4);
+  overflow: hidden;
+}
+
+.runs-group-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--seed-dimension-x3);
+  padding: var(--seed-dimension-x4) var(--seed-dimension-x5);
+  cursor: pointer;
+  list-style: none;
+}
+
+.runs-group-head::-webkit-details-marker {
+  display: none;
+}
+
+.runs-group-head::before {
+  content: "▸";
+  color: var(--seed-color-fg-neutral-subtle);
+  transition: transform var(--farm-dur-micro) var(--farm-ease-out);
+}
+
+.runs-group[open] > .runs-group-head::before {
+  transform: rotate(90deg);
+}
+
+.runs-rows {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--seed-color-stroke-neutral-muted);
+}
+
+.runs-row {
+  all: unset;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: 120px minmax(120px, 1fr) auto;
+  align-items: center;
+  gap: var(--seed-dimension-x3);
+  padding: var(--seed-dimension-x3) var(--seed-dimension-x5);
+  border-bottom: 1px solid var(--seed-color-stroke-neutral-muted);
+  cursor: pointer;
+}
+
+.runs-row:last-child {
+  border-bottom: none;
+}
+
+.runs-row:hover {
+  background: var(--seed-color-bg-layer-default-pressed);
+}
+
+.runs-row-counts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--seed-dimension-x1);
+}
+
+@media (max-width: 720px) {
+  .runs-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .runs-row-counts {
+    justify-content: flex-start;
+  }
+}
+
+.runs-groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x3);
+}
+
+/* 점검 종류마다 카드 바탕색: 플로우 파랑 · 화면 회색 · 정책 노랑 · 데이터 초록 · 화면 깨짐 주황 · 봇 보라 */
+.runs-cat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--seed-dimension-x1);
+  padding: var(--seed-dimension-x1) var(--seed-dimension-x2_5);
+  border-radius: var(--seed-radius-r2);
+  font-size: 13px;
+  color: var(--seed-color-fg-neutral);
+}
+
+.runs-cat-name {
+  font-weight: 600;
+}
+
+.runs-cat-count {
+  font-variant-numeric: tabular-nums;
+}
+
+.runs-cat-failed {
+  color: var(--seed-color-fg-critical);
+  font-weight: 700;
+}
+
+.runs-cat-flow {
+  background: var(--seed-color-palette-blue-100);
+}
+
+.runs-cat-screen {
+  background: var(--seed-color-palette-gray-100);
+}
+
+.runs-cat-policy {
+  background: var(--seed-color-palette-yellow-100);
+}
+
+.runs-cat-data {
+  background: var(--seed-color-palette-green-100);
+}
+
+.runs-cat-layout {
+  background: var(--seed-color-palette-carrot-100);
+}
+
+.runs-cat-bot {
+  background: var(--seed-color-palette-purple-100);
+}
+
+/* 고르지 않은 종류 칩은 흰 바탕, 고른 칩은 진하게 */
+.runs-chip.runs-cat-flow,
+.runs-chip.runs-cat-screen,
+.runs-chip.runs-cat-policy,
+.runs-chip.runs-cat-data,
+.runs-chip.runs-cat-layout,
+.runs-chip.runs-cat-bot {
+  border-color: transparent;
+  color: var(--seed-color-fg-neutral);
+}
+
+.runs-chips .runs-chip[aria-pressed="true"] {
+  border-color: var(--seed-color-bg-neutral-inverted);
+  background: var(--seed-color-bg-neutral-inverted);
+  color: var(--seed-color-fg-neutral-inverted);
+}
+
+/* 한 종류만 돈 실행 줄: 그 종류 색 옅은 바탕 */
+
+.runs-row-flow {
+  background: color-mix(in srgb, var(--seed-color-palette-blue-100) 55%, transparent);
+}
+
+.runs-row-screen {
+  background: color-mix(in srgb, var(--seed-color-palette-gray-100) 55%, transparent);
+}
+
+.runs-row-policy {
+  background: color-mix(in srgb, var(--seed-color-palette-yellow-100) 55%, transparent);
+}
+
+.runs-row-data {
+  background: color-mix(in srgb, var(--seed-color-palette-green-100) 55%, transparent);
+}
+
+.runs-row-layout {
+  background: color-mix(in srgb, var(--seed-color-palette-carrot-100) 55%, transparent);
+}
+
+.runs-row-bot {
+  background: color-mix(in srgb, var(--seed-color-palette-purple-100) 55%, transparent);
+}
+
+.runs-row[class*="runs-row-"]:hover {
+  filter: brightness(0.97);
+}

@@ -37,7 +37,12 @@
     "device-mcp": "tsx apps/mcp/src/server.ts",
     "chaos": "tsx apps/cli/src/chaos.ts",
     "policy-watch": "tsx apps/cli/src/policy-watch.ts",
-    "policy-check": "tsx apps/cli/src/policy-check.ts"
+    "policy-check": "tsx apps/cli/src/policy-check.ts",
+    "layout-check": "tsx apps/cli/src/layout-check.ts",
+    "daily-report": "tsx apps/cli/src/daily-report.ts",
+    "bot-check": "tsx apps/cli/src/chaos.ts",
+    "db-import": "tsx apps/cli/src/db-import.ts",
+    "farm-password": "tsx apps/cli/src/farm-password.ts"
   },
   "keywords": [
     "device-farm",
@@ -74,7 +79,7 @@
     "access": "public"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22.13"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",

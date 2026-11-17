@@ -1,4 +1,62 @@
-/* 앱 셸. 색·간격·라운드는 SEED 토큰만 쓴다. 화면별 스타일은 각 *-screen.css. */
+/* 앱 셸. 색·간격·라운드는 SEED 토큰과 아래 --farm-* 토큰만 쓴다. 화면별 스타일은 각 *-screen.css.
+   브랜드색은 SEED 기본을 그대로 쓰고, 강조는 주 동작·선택·진행에만 쓴다. */
+
+:root {
+  /* 모션: 상태가 바뀔 때만, 짧게 */
+  --farm-dur-micro: 120ms;
+  --farm-dur-short: 200ms;
+  --farm-dur-medium: 400ms;
+  --farm-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --farm-ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+
+  --farm-focus-ring: var(--seed-color-stroke-focus-ring);
+  --farm-hairline: 1px solid var(--seed-color-stroke-neutral-muted);
+  --farm-gutter: var(--seed-dimension-x4);
+  --farm-shadow-float: 0 8px 24px color-mix(in srgb, var(--seed-color-fg-neutral) 18%, transparent);
+}
+
+html,
+body {
+  overflow-x: clip;
+}
+
+::selection {
+  background: var(--seed-color-bg-brand-weak);
+  color: var(--seed-color-fg-neutral);
+}
+
+:root {
+  accent-color: var(--seed-color-bg-brand-solid);
+  caret-color: var(--seed-color-fg-neutral);
+}
+
+/* 포커스 링: 누르는 것은 전부 같은 링, 바로 뜬다(페이드 없음). all: unset 버튼에도 걸리게 [tabindex]로 구체성을 올린다 */
+:is(button, a, summary, input, select, textarea, [role="button"], [role="tab"], [tabindex]):focus-visible {
+  outline: 2px solid var(--farm-focus-ring);
+  outline-offset: 2px;
+  transition: none;
+}
+
+/* 움직임 줄이기: 키프레임·전환을 사실상 끈다 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* 짧은 사실 여러 개(MetaLine): 가운뎃점 대신 간격 */
+.farm-meta {
+  display: inline-flex;
+  flex-wrap: wrap;
+  column-gap: var(--seed-dimension-x3);
+  row-gap: var(--seed-dimension-x0_5);
+}
+
 html,
 body,
 #root {
@@ -6,9 +64,14 @@ body,
   min-height: 100%;
 }
 
+/* 스크롤바가 생기고 없어질 때 화면이 옆으로 들썩이지 않게 자리를 늘 비워 둔다 */
+html {
+  scrollbar-gutter: stable;
+}
+
 .farm-app {
   display: flex;
-  min-height: 100vh;
+  min-height: 100dvh;
   background: var(--seed-color-bg-layer-basement);
   color: var(--seed-color-fg-neutral);
   font-family: var(--seed-font-family);
@@ -25,7 +88,7 @@ body,
   gap: var(--seed-dimension-x6);
   flex-shrink: 0;
   width: 180px;
-  height: 100vh;
+  height: 100dvh;
   box-sizing: border-box;
   padding: var(--seed-dimension-x5) var(--seed-dimension-x3);
   background: var(--seed-color-bg-layer-default);
@@ -34,6 +97,25 @@ body,
 
 .farm-sidebar-logo {
   padding: 0 var(--seed-dimension-x2);
+}
+
+/* 메뉴 아래: 오늘 요약 다시 열기 */
+.farm-today-button {
+  all: unset;
+  box-sizing: border-box;
+  margin-top: auto;
+  padding: var(--seed-dimension-x2_5) var(--seed-dimension-x3);
+  border: 1px solid var(--seed-color-stroke-neutral-muted);
+  border-radius: var(--seed-radius-r2);
+  color: var(--seed-color-fg-neutral);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+}
+
+.farm-today-button:hover {
+  background: var(--seed-color-bg-neutral-weak);
 }
 
 .farm-nav {
@@ -58,17 +140,37 @@ body,
 }
 
 .farm-nav-item:focus-visible {
-  outline: 2px solid var(--seed-color-stroke-neutral-muted);
   outline-offset: -2px;
 }
 
+/* 지금 화면 */
 .farm-nav-item[aria-current="page"] {
   background: var(--seed-color-bg-neutral-weak);
   color: var(--seed-color-fg-neutral);
   font-weight: 700;
 }
 
+/* 화면을 처음 불러올 때: 본문 높이를 다 쓰고 가운데 */
+.farm-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--seed-dimension-x2);
+  min-height: calc(100dvh - 2 * var(--seed-dimension-x5));
+}
+
+/* 메뉴 묶음 이름(「관리」) */
+.farm-nav-group {
+  margin: var(--seed-dimension-x4) 0 var(--seed-dimension-x1);
+  padding: 0 var(--seed-dimension-x3);
+  color: var(--seed-color-fg-neutral-subtle);
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .farm-main {
+  /* 숫자 폭을 고정해 값이 바뀌어도 옆 글자가 밀리지 않게 */
+  font-variant-numeric: tabular-nums;
   flex: 1;
   min-width: 0;
   max-width: 1280px;
@@ -106,4 +208,60 @@ body,
   .farm-nav-item {
     white-space: nowrap;
   }
+}
+
+/* 버튼 결과 알림: 화면 위 가운데에 떠서 본문을 밀지 않는다 */
+.farm-notice {
+  position: fixed;
+  top: var(--seed-dimension-x4);
+  left: 50%;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: var(--seed-dimension-x3);
+  max-width: min(560px, calc(100% - 32px));
+  padding: var(--seed-dimension-x3) var(--seed-dimension-x4);
+  background: var(--seed-color-bg-neutral-inverted);
+  color: var(--seed-color-fg-neutral-inverted);
+  border-radius: var(--seed-radius-r3);
+  box-shadow: var(--farm-shadow-float);
+  transform: translateX(-50%);
+  animation: farm-notice-in var(--farm-dur-short) var(--farm-ease-out);
+}
+
+.farm-notice-error {
+  background: var(--seed-color-bg-critical-solid);
+}
+
+.farm-notice-close {
+  all: unset;
+  display: inline-grid;
+  place-items: center;
+  min-width: var(--seed-dimension-x8);
+  min-height: var(--seed-dimension-x8);
+  border-radius: var(--seed-radius-r2);
+  font-size: 18px;
+  line-height: 1;
+  opacity: 0.7;
+  cursor: pointer;
+}
+
+@keyframes farm-notice-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -8px);
+  }
+}
+
+/* 직접 만든 버튼(all: unset)의 누름·못 누름 상태. SEED 버튼은 자체 상태를 쓴다 */
+:is(.devices-device, .chaos-run, .chaos-step-head, .bot-run, .bl-tile, .fc-undo, .fc-text, .fc-tab, .issues-kind, .issues-row, .smap-leaf-toggle, .explore-device, .farm-today-button, .farm-nav-item, .pol-row-head, .today-kind, .runs-chip, .runs-row):active:not(:disabled) {
+  background-color: var(--seed-color-bg-layer-default-pressed);
+}
+
+:is(button, [role="button"]):disabled {
+  cursor: not-allowed;
+}
+
+:is(.fc-undo, .fc-text, .fc-tab, .issues-kind, .smap-leaf-toggle, .runs-chip):disabled {
+  opacity: 0.5;
 }

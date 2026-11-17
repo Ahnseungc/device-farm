@@ -23,6 +23,8 @@ export default defineAppConfig({
   // 하단 탭바(웹 링크). 홈 탭을 누르면 homePath로 간다. 플로우는 홈에서 시작한다.
   homePath: "/home",
   homeTabName: "홈",
+  // (선택) 홈 탭에 실제로 적힌 글자가 웹 배포마다 다를 때. 앞에서부터 화면에 있는 것을 누른다. 비우면 [homeTabName]
+  // homeTabLabels: ["홈", "Home"],
   tabPaths: { 카테고리: "/category", 혜택: "/benefit", 마이: "/my" },
   // 화면 상단 뒤로 버튼 이름(aria-label)
   inPageBackNames: ["뒤로가기"],
@@ -40,7 +42,11 @@ export default defineAppConfig({
     // 열린 WebView 스택을 모두 닫는 앱 브리지(예: flutter_inappwebview 핸들러). 비우면 닫지 않는다.
     stackResetScript: "window.appBridge && window.appBridge.callHandler && window.appBridge.callHandler('stackReset')",
     sheetCloseName: "닫기",
+    // (선택) 화면 전체를 덮어 뒤로·시트 닫기로 안 닫히는 창(상담 채팅 메신저 등)을 닫는 스크립트. 홈으로 갈 때 보낸다.
+    // overlayCloseScript: "window.ChatWidget && window.ChatWidget.hide()",
   },
+  // (선택) 처음 한 번만 뜨는 안내 화면. 플로우가 누른 뒤 이 경로면 버튼을 눌러 넘긴다(앱을 새로 깔면 다시 뜬다).
+  introScreens: [{ path: "/benefit/onboarding", button: "시작하기" }],
 
   guard: {
     // 기본 금지어(구매·결제·송금·출금·탈퇴…)에 더한다

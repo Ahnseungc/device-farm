@@ -1,35 +1,48 @@
-import { DeviceLocks } from "@device-farm/core/device/lock";
+import type { ChaosRun } from "@device-farm/core/chaos/types";
 import { appIdFor, type AppConfig } from "@device-farm/core/config/app-config";
+import { botFinishAlert, exploreFinishAlert } from "@device-farm/core/slack/finish-alert";
+import { DeviceLocks } from "@device-farm/core/device/lock";
+import { issueOf, sortIssues } from "@device-farm/core/issues/issue";
+import { nightlyBotEpisodes, nightlyBotMinutes, nightlyBotSteps, nightlySeed, type NightlySlot } from "@device-farm/core/nightly/schedule";
 import type { DeviceRun } from "@device-farm/core/device/types";
 import { probeScreen } from "@device-farm/core/explore/probe";
 import { runScreenQa } from "@device-farm/core/qa/run";
 import { execFileText, type Exec } from "@device-farm/devices/exec";
 import { closeAllIosSessions, getIosSession } from "@device-farm/devices/ios-session";
 import { iosMjpegUrl } from "@device-farm/devices/stream/ios";
+import { closeUnfinishedChaosRuns } from "@device-farm/engine/chaos/results";
+import { designPages, latestDesignResults } from "@device-farm/engine/policy/design-pages";
 import { confirmDeviceBaselines, pendingDeviceBaselines } from "@device-farm/engine/check";
 import { readLatestExplore, type ExploreResult } from "@device-farm/engine/explore/results";
 import { defaultGuard, ExploreRequestError, replayOne, runExplore, type ExploreDeps } from "@device-farm/engine/explore/run";
 import { readReady } from "@device-farm/engine/flows/store";
-import { closeUnfinishedRun, devicesRoot, pruneRuns, readLatestRun, writeRun } from "@device-farm/engine/results";
-import { createRunId, errorMessage, runDevices, testResultsRoot, type RunDeps } from "@device-farm/engine/run";
+import { closeUnfinishedRun, devicesRoot, listRunSummaries, pruneRuns, readLatestRun, readRun, screenshotOf, writeRun } from "@device-farm/engine/results";
+import { readLatestDailyReport } from "@device-farm/engine/report/daily-store";
+import { readAlerts } from "@device-farm/engine/slack/alert-store";
+import { createRunId, errorMessage, installedVersionLabel, policyScenarioPrefix, runDevices, testResultsRoot, type RunDeps, type RunRequest } from "@device-farm/engine/run";
 import { askClaude } from "@device-farm/engine/policy/claude";
-import { readAllPageRules, readFigmaCache, readIgnores } from "@device-farm/engine/policy/rules-store";
+import { readAllPageRules, readFigmaCache, readFigmaPageOf, readIgnores } from "@device-farm/engine/policy/rules-store";
 import { readFrontFigmaMap } from "@device-farm/engine/policy/front-figma";
-import { checkPolicyScreen, policyScreens } from "@device-farm/engine/policy/screen-check";
+import { checkPolicyScreen, policyScreens, withScreenAliases } from "@device-farm/engine/policy/screen-check";
+import { readSources } from "@device-farm/engine/policy/store";
 import { readScreenMap, recordScreenMap } from "@device-farm/engine/screen-map-store";
 
 import { farmScenarios } from "./scenarios";
 import { baselineFor, candidatePng } from "./baselines";
 import { createAutoRuns } from "./auto";
+import { runBotCheck } from "./bot-check";
 import { createCapture } from "./capture";
 import { createControlLog } from "./control";
+import { startDailyReports } from "./daily-report";
 import { createDeviceDeps, createDeviceList } from "./devices";
 import { apiOrigin, loadDotEnv, webOrigin } from "./env";
 import { loadExploreInputs } from "./explore";
 import { createJobGate } from "./jobs";
 import { createStreamHub, watchVideo } from "./streams";
-import type { Farm } from "./types";
+import type { Farm, StartResult } from "./types";
 import { startPolicyWatch, type PolicyWatch } from "./policy-watch";
+import { startSlackAlerts, type SlackAlerts } from "./slack-alerts";
+import { startNightlyChecks, type NightlyStart } from "./nightly";
 import { startAutoWatch } from "./watch";
 
 export interface FarmOptions {
@@ -60,6 +73,13 @@ export function createFarm(options: FarmOptions): RunningFarm {
   let exploring: ExploreResult[] | null = null;
   let watch: ReturnType<typeof startAutoWatch> | null = null;
   let policyWatch: PolicyWatch | null = null;
+  let nightly: ReturnType<typeof startNightlyChecks> | null = null;
+  let dailyReports: ReturnType<typeof startDailyReports> | null = null;
+  let slackAlerts: SlackAlerts | null = null;
+  /** 슬랙에 넘긴 마지막 실행. 끝난 실행을 한 번만 넘긴다 */
+  let alertedRunId: string | null = null;
+  /** 실행·기기마다 슬랙에 넘긴 화면 수. 새로 끝난 화면만 넘긴다 */
+  const alertedScreens = new Map<string, number>();
 
   const gate = createJobGate(() => {
     try {
@@ -99,11 +119,23 @@ export function createFarm(options: FarmOptions): RunningFarm {
   };
 
   /** 정책·피그마 대조: 뽑힌 규칙이 없으면 돌지 않는다(점검은 그대로). 무시 목록은 점검마다 다시 읽는다 */
-  const policyCheck = (): Pick<RunDeps, "policyScreens" | "runPolicy"> => {
-    const screens = policyScreens(readAllPageRules(), knownScreens(), readFigmaCache(), readFrontFigmaMap()?.routes);
-    if (screens.length === 0) return {};
+  const policyCheck = (): Pick<RunDeps, "policyScreens" | "runPolicy" | "designScreenFor" | "runDesign"> => {
+    const rules = readAllPageRules();
+    const figmaCache = readFigmaCache();
+    const frontRoutes = readFrontFigmaMap()?.routes;
+    const pageOf = readFigmaPageOf();
     const ignores = readIgnores();
-    return { policyScreens: screens, runPolicy: (driver, screen) => checkPolicyScreen(driver, screen, { ask: askClaude, ignores }) };
+    // 플로우 「디자인 확인」: 그 경로 하나의 규칙·피그마. 규칙도 피그마도 없으면 null
+    const design: Pick<RunDeps, "designScreenFor" | "runDesign"> = {
+      designScreenFor: (path) => {
+        const screen = policyScreens(rules, [path], figmaCache, frontRoutes, pageOf).find((item) => item.path === path);
+        return screen && (screen.rules.length > 0 || screen.figma) ? screen : null;
+      },
+      runDesign: (driver, screen) => checkPolicyScreen(driver, screen, { ask: askClaude, ignores, stay: true }),
+    };
+    const screens = withScreenAliases(policyScreens(rules, knownScreens(), figmaCache, frontRoutes, pageOf), readSources().screenAliases);
+    if (screens.length === 0) return design;
+    return { ...design, policyScreens: screens, runPolicy: (driver, screen) => checkPolicyScreen(driver, screen, { ask: askClaude, ignores }) };
   };
 
   const runDeps = (): RunDeps => ({
@@ -119,6 +151,21 @@ export function createFarm(options: FarmOptions): RunningFarm {
     onUpdate: (run) => {
       latest = run;
       writeRun(run);
+      // 화면이 끝날 때마다 실패·앱 버그 후보를 바로, 점검이 끝나면 나머지를 슬랙에 알린다(새 것만)
+      if (slackAlerts) {
+        for (const outcome of run.outcomes) {
+          const key = `${run.runId}|${outcome.device.id}`;
+          const done = alertedScreens.get(key) ?? 0;
+          for (const screen of outcome.screens.slice(done)) {
+            slackAlerts.onScreenFinished(run, outcome, screen).catch((error: unknown) => log(`슬랙 알림 실패: ${errorMessage(error)}`));
+          }
+          alertedScreens.set(key, outcome.screens.length);
+        }
+      }
+      if (run.finishedAt && alertedRunId !== run.runId && slackAlerts) {
+        alertedRunId = run.runId;
+        slackAlerts.onRunFinished(run).catch((error: unknown) => log(`슬랙 알림 실패: ${errorMessage(error)}`));
+      }
     },
     capture,
     baselineFor: (device, scenario, screenshot) => baselineFor(device, scenario, screenshot),
@@ -139,6 +186,27 @@ export function createFarm(options: FarmOptions): RunningFarm {
     log,
   });
 
+  /** 봇 점검 기기 하나가 끝나면 슬랙에 한 줄 */
+  const stopLabels = { run: "기기 점검", bot: "봇 점검", explore: "탐색", policy: "정책 확인" } as const;
+  /** 봇 점검·탐색 「중지」. 시작할 때 새로 만들고 끝나면 비운다 */
+  let botAbort: AbortController | null = null;
+  let exploreAbort: AbortController | null = null;
+  /** 봇 점검을 시작한다(야간·수동 같은 길). 바쁘면 null */
+  const startBotCheck = (options: { seed: number; minutes: number; episodes: number; stepsPerEpisode: number }) => {
+    const abort = new AbortController();
+    const started = gate.start("bot", () =>
+      runBotCheck(options, { app, exec, locks, connected: devices.connected, log, onFinished: botFinished, signal: abort.signal }).finally(() => {
+        if (botAbort === abort) botAbort = null;
+      }),
+    );
+    if (started) botAbort = abort;
+    return started;
+  };
+
+  const botFinished = async (run: ChaosRun, summary: string | null) => {
+    await slackAlerts?.onFinished(botFinishAlert(run, summary));
+  };
+
   function background(kind: string, started: Promise<void>): void {
     started.catch((error: unknown) => log(`${kind} 실패: ${errorMessage(error)}`));
   }
@@ -153,6 +221,45 @@ export function createFarm(options: FarmOptions): RunningFarm {
     },
     log,
   });
+
+  /** 기기 점검을 시작한다(화면 요청·야간 플로우 점검). 바쁘면 이유를 돌려준다 */
+  function startRun(request: Omit<RunRequest, "runId" | "trigger"> & { trigger?: RunRequest["trigger"] }): StartResult {
+    const missing = request.flowIds?.filter((id) => !readReady().some((flow) => flow.id === id)) ?? [];
+    if (missing.length > 0) return { ok: false, error: `확정 플로우가 아닙니다: ${missing.join(", ")}` };
+    if (request.designOnly) {
+      const known = new Set((policyCheck().policyScreens ?? []).map((screen) => screen.path));
+      if (known.size === 0) return { ok: false, error: "점검할 디자인 화면이 없어요. 정책 규칙이나 피그마가 연결된 화면이 있어야 해요." };
+      const unknown = request.designPaths?.filter((path) => !known.has(path)) ?? [];
+      if (unknown.length > 0) return { ok: false, error: `디자인 점검 화면이 아닙니다: ${unknown.join(", ")}` };
+    }
+    const runId = createRunId(Date.now());
+    const abort = new AbortController();
+    const started = gate.start("run", () => runDevices({ ...request, runId }, { ...runDeps(), signal: abort.signal }));
+    if (!started) return { ok: false, error: gate.busyMessage() };
+    runAbort = abort;
+    background(
+      "기기 점검",
+      started.finally(() => {
+        if (runAbort === abort) runAbort = null;
+      }),
+    );
+    return { ok: true, runId };
+  }
+
+  /** 야간 칸 하나를 시작한다(docs/operations.md). 플로우는 기기 점검, 봇은 봇 점검 작업으로 돈다 */
+  function startNightly(slot: NightlySlot, scheduledAt: Date): NightlyStart {
+    if (slot.kind === "flows") {
+      if (readReady().length === 0) return { started: true, note: "확정 플로우가 없어 돌 것이 없음" };
+      const started = startRun({ kind: "dev", version: installedVersionLabel, deviceIds: "all", flowsOnly: true, trigger: "auto", label: slot.label });
+      return started.ok ? { started: true, note: started.runId } : { started: false, busy: started.error };
+    }
+    const seed = nightlySeed(scheduledAt);
+    const options = { seed, minutes: nightlyBotMinutes, episodes: nightlyBotEpisodes, stepsPerEpisode: nightlyBotSteps };
+    const started = startBotCheck(options);
+    if (!started) return { started: false, busy: gate.busyMessage() };
+    background(slot.label, started);
+    return { started: true, note: `시드 ${seed}` };
+  }
 
   async function openIosSessions(): Promise<void> {
     const ios = (await devices.connected()).filter((device) => device.platform === "ios");
@@ -170,19 +277,15 @@ export function createFarm(options: FarmOptions): RunningFarm {
     isBusy: gate.isBusy,
     listDevices: devices.withState,
     platformOf: async (id) => (await devices.withState()).find((device) => device.id === id)?.platform ?? null,
-    startRun: (request) => {
-      const runId = createRunId(Date.now());
-      const abort = new AbortController();
-      const started = gate.start("run", () => runDevices({ ...request, runId }, { ...runDeps(), signal: abort.signal }));
-      if (!started) return { ok: false, error: gate.busyMessage() };
-      runAbort = abort;
-      background(
-        "기기 점검",
-        started.finally(() => {
-          if (runAbort === abort) runAbort = null;
-        }),
-      );
-      return { ok: true, runId };
+    startRun,
+    designPages: () => designPages(policyCheck().policyScreens ?? [], latestDesignResults()),
+    stopJob: (kind) => {
+      if (kind === "policy") return policyWatch?.cancel() ?? false;
+      const abort = kind === "run" ? runAbort : kind === "bot" ? botAbort : exploreAbort;
+      if (!abort || abort.signal.aborted) return false;
+      abort.abort();
+      log(`${stopLabels[kind]} 중지 요청`);
+      return true;
     },
     stopRun: () => {
       if (!runAbort || runAbort.signal.aborted) return false;
@@ -190,18 +293,27 @@ export function createFarm(options: FarmOptions): RunningFarm {
       log("점검 멈추기 요청");
       return true;
     },
-    latestRun: () => latest,
+    // 서버가 안 돌리는 동안엔 DB를 본다 — CLI(policy-check·layout-check)가 쓰는 진행 중 실행도 플로팅·결과에 보이게
+    latestRun: () => (gate.isBusy() ? latest : (readLatestRun() ?? latest)),
     pendingBaselines: () => pendingDeviceBaselines(),
     candidatePng: (name) => candidatePng(name),
     confirmBaselines: (names) => confirmDeviceBaselines(names),
     startExplore: (request) => {
       if (gate.isBusy()) return { ok: false, error: gate.busyMessage() };
-      const deps = exploreDeps(); // env·허용 목록이 틀리면 여기서 throw → 시작하지 않는다.
+      const abort = new AbortController();
+      const deps = { ...exploreDeps(), signal: abort.signal }; // env·허용 목록이 틀리면 여기서 throw → 시작하지 않는다.
       const runId = createRunId(Date.now());
-      const started = gate.start("explore", () => runExplore({ deviceIds: request.deviceIds, runId }, deps).finally(() => {
-        exploring = null;
-      }));
+      const started = gate.start("explore", () =>
+        runExplore({ deviceIds: request.deviceIds, runId }, deps)
+          .then((results) => slackAlerts?.onFinished(exploreFinishAlert(results)))
+          .then(() => undefined)
+          .finally(() => {
+            exploring = null;
+            if (exploreAbort === abort) exploreAbort = null;
+          }),
+      );
       if (!started) return { ok: false, error: gate.busyMessage() };
+      exploreAbort = abort;
       background("탐색", started);
       return { ok: true, runId };
     },
@@ -219,19 +331,51 @@ export function createFarm(options: FarmOptions): RunningFarm {
     sendInput: (id, platform, event) => (platform === "android" ? hub.sendAndroid(id, event) : hub.sendIos(id, event)),
     watchVideo: (id, sink) => watchVideo(hub, id, sink),
     recordControl: control.record,
+    runSummaries: () => listRunSummaries(),
+    runById: (runId) => readRun(runId),
+    issues: () =>
+      sortIssues(
+        Object.entries(readAlerts()).map(([key, sent]) => {
+          const issue = issueOf(key, sent);
+          // 정책·피그마 문제는 정책 점검 화면, 점검 실패는 그 시나리오 이름이 화면 기록 키다
+          const fromPolicy = issue.items !== undefined || issue.kind === "policy" || issue.kind === "docs" || issue.kind === "unverified";
+          const scenario = fromPolicy ? `${policyScenarioPrefix}${issue.items?.[0]?.path ?? issue.path}` : issue.path;
+          const screenshot = screenshotOf(issue.runId, scenario);
+          return screenshot ? { ...issue, screenshot } : issue;
+        }),
+      ),
+    setIssueStatus: async (key, status) => (slackAlerts ? slackAlerts.setStatus(key, status, "디바이스팜") : false),
+    latestDailyReport: () => readLatestDailyReport(),
+    startBot: () => {
+      const seed = Date.now() % 100_000;
+      const options = { seed, minutes: nightlyBotMinutes, episodes: nightlyBotEpisodes, stepsPerEpisode: nightlyBotSteps };
+      const started = startBotCheck(options);
+      if (!started) return { ok: false, error: gate.busyMessage() };
+      background("봇 점검", started);
+      return { ok: true, runId: `시드 ${seed}` };
+    },
     policyState: () => policyWatch?.state() ?? null,
     checkPolicy: () => policyWatch?.checkNow() ?? false,
     start: async () => {
-      if (closeUnfinishedRun(devicesRoot)) log("끝나지 않은 실행을 서버 재시작으로 닫았습니다.");
+      if (closeUnfinishedRun()) log("끝나지 않은 실행을 서버 재시작으로 닫았습니다.");
+      const closedBots = closeUnfinishedChaosRuns();
+      if (closedBots > 0) log(`끝나지 않은 봇 점검 ${closedBots}개를 서버 재시작으로 닫았습니다.`);
       log(`보관 기간이 지난 실행 ${pruneRuns(devicesRoot, Date.now())}개를 지웠습니다.`);
-      latest = readLatestRun(devicesRoot);
+      latest = readLatestRun();
       void openIosSessions().catch((error: unknown) => log(`iOS 세션 준비 실패: ${errorMessage(error)}`));
       watch = startAutoWatch({ isBusy: gate.isBusy, runAuto: auto.runAuto, failIos: auto.failIos, log, install: app.install });
       policyWatch = startPolicyWatch({ app, log, knownScreens });
+      slackAlerts = startSlackAlerts(app, log);
+      // 야간 점검·아침 분석은 켤 때만(.env FARM_NIGHTLY=1·FARM_DAILY_REPORT=1)
+      if (process.env.FARM_NIGHTLY?.trim() === "1") nightly = startNightlyChecks({ start: startNightly, log });
+      if (process.env.FARM_DAILY_REPORT?.trim() === "1") dailyReports = startDailyReports({ appName: app.name, log });
     },
     stop: async () => {
       watch?.stop();
       policyWatch?.stop();
+      slackAlerts?.stop();
+      nightly?.stop();
+      dailyReports?.stop();
       control.stop();
       await closeAllIosSessions();
     },

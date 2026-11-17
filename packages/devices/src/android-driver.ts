@@ -6,7 +6,7 @@ import { chromium, type Browser, type BrowserContext, type Page } from "playwrig
 
 import type { AppConfig } from "@device-farm/core/config/app-config";
 import { deepLinkUrl } from "@device-farm/core/device/deep-link";
-import { homeAttempts, type ClickMatch, type ClickRole, type ScreenDriver } from "@device-farm/core/device/driver";
+import { clickLabels, homeAttempts, type ClickMatch, type ClickRole, type ScreenDriver } from "@device-farm/core/device/driver";
 import { markStaleScript, samePath, staleMarkKey } from "@device-farm/core/device/screen-ready";
 
 import { execFileText, type Exec } from "./exec";
@@ -27,13 +27,16 @@ const markButtonScript = clickButtonScript.replace(
 if (markButtonScript === clickButtonScript) throw new Error("clickButtonScript에 target.click()이 없습니다.");
 /** 버튼이 그려지기를 기다리는 시간 (작성자 판단, 플로우 스텝 대기와 같다) */
 const clickWaitMs = 10_000;
+/** 누를 위치가 멈췄는지 다시 재는 횟수·간격 (작성자 판단, 캐러셀 넘김 애니메이션 약 0.5초) */
+const settleSamples = 8;
+const settleSampleMs = 120;
 /** 스택을 닫은 직후 같은 경로 push를 막는 앱이 있다(중복 push 방지). 그 시간보다 넉넉히 기다린다. iOS 드라이버와 같은 값. */
 const stackSettleMs = 600;
 
 const execFileBuffer = promisify(execFile);
 
 /** 누를 자리(웹 CSS 좌표)와 화면 좌표로 바꿀 비율. 링크면 href. */
-type TapPoint = { x: number; y: number; ratio: number; viewHeight: number; href: string | null };
+type TapPoint = { x: number; y: number; ratio: number; viewHeight: number; href: string | null; blocked?: string };
 
 const webViewBoundsPattern = /class="android\.webkit\.WebView"[^>]*bounds="\[(\d+),(\d+)\]/;
 
@@ -82,11 +85,41 @@ const adValidatorTopRatio = 0.6;
  * 화면 맨 아래 버튼(풀팝업 취소 버튼)을 아래쪽으로 누르면 바로 밑 네이티브 탭바에 닿았다.
  */
 const linkTapHeightRatio = 0.75;
-/** 링크를 누른 뒤 도착을 기다리는 시간·누르는 횟수 (작성자 판단) */
-const linkArriveWaitMs = 5_000;
+/**
+ * 링크를 누른 뒤 도착을 기다리는 시간·누르는 횟수 (작성자 판단).
+ * 앱을 막 띄운 직후 홈 탭은 누르고 5.6초 뒤에야 경로가 바뀌었다(자리 잡은 뒤에는 0.8초).
+ * 5초로 두면 늦게 도착한 것을 놓쳐 홈 이동 실패로 보았다. 다시 누르는 것은 느린 이동을 빠르게 하지 못한다.
+ */
+const linkArriveWaitMs = 12_000;
 const linkTapAttempts = 2;
 /** 시작 전에 시트 닫기(`webview.sheetCloseName`)를 누르는 최대 횟수(시트가 겹쳐 뜨는 경우) (작성자 판단) */
 const sheetCloseAttempts = 3;
+/** 이름이 `closeName`인 버튼 중 그 자리 맨 위가 자기 자신인 것(사람이 누를 수 있는 것)의 가운데. 없으면 팝업 바깥 딤, 그것도 없으면 null */
+const reachableCloseScript = (closeName: string) => `(() => {
+  const nameOf = (n) => (n.getAttribute("aria-label") || n.innerText || n.title || "").replace(/\\s+/g, " ").trim();
+  for (const el of Array.from(document.querySelectorAll('button, [role="button"]'))) {
+    if (nameOf(el) !== ${JSON.stringify(closeName)}) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) continue;
+    const x = r.x + r.width / 2;
+    const y = r.y + r.height / 2;
+    if (x < 0 || x > innerWidth || y < 0 || y > innerHeight) continue;
+    const hit = document.elementFromPoint(x, y);
+    if (hit && (hit === el || el.contains(hit))) return { x, y, ratio: devicePixelRatio, viewHeight: innerHeight, href: null };
+  }
+  // 닫기가 없는 팝업(「다시 풀기」만 있는 시간 초과 팝업 등)은 사람처럼 팝업 바깥 딤을 눌러 닫는다
+  const dialog = document.querySelector('[role="dialog"], [aria-modal="true"]');
+  if (!dialog) return null;
+  for (const ratio of [0.12, 0.88]) {
+    const x = innerWidth / 2;
+    const y = innerHeight * ratio;
+    const hit = document.elementFromPoint(x, y);
+    if (hit && !dialog.contains(hit) && /dim|overlay|backdrop/i.test(String(hit.className) + " " + (hit.getAttribute("data-state") || ""))) {
+      return { x, y, ratio: devicePixelRatio, viewHeight: innerHeight, href: null };
+    }
+  }
+  return null;
+})()`;
 
 /**
  * `allWindows`는 앱 위에 따로 뜬 창(AdMob 검증 팝업)까지 담는다. 기본 덤프에는 그 팝업이 없다.
@@ -117,11 +150,23 @@ async function dismissAdValidator(exec: Exec, serial: string, screen: string): P
   await wait(stackSettleMs);
 }
 
-/** 앱 프로세스의 WebView 디버깅 소켓. 앱이 WebView 디버깅을 켜지 않았으면 끝내 안 생긴다. */
+/** 앱 프로세스 id. 안 떠 있으면 빈 문자열 */
+async function appPid(exec: Exec, serial: string, appId: string): Promise<string> {
+  return (await exec("adb", ["-s", serial, "shell", "pidof", appId]).catch(() => "")).trim().split(/\s+/)[0] ?? "";
+}
+
+/**
+ * 앱 프로세스의 WebView 디버깅 소켓. 앱이 WebView 디버깅을 켜지 않았으면 끝내 안 생긴다.
+ * 설치 없이 도는 점검(플로우만 점검 등)은 앱이 떠 있다고 보고 붙었는데, 앱이 꺼져 있으면 30초 기다리다 실패했다.
+ * 그래서 앱이 안 떠 있으면 먼저 띄운다.
+ */
 async function devtoolsSocket(exec: Exec, serial: string, appId: string): Promise<string> {
+  if (!(await appPid(exec, serial, appId))) {
+    await exec("adb", ["-s", serial, "shell", "monkey", "-p", appId, "1"]).catch(() => "");
+  }
   const deadline = Date.now() + devtoolsWaitMs;
   while (Date.now() < deadline) {
-    const pid = (await exec("adb", ["-s", serial, "shell", "pidof", appId]).catch(() => "")).trim().split(/\s+/)[0];
+    const pid = await appPid(exec, serial, appId);
     const name = `webview_devtools_remote_${pid}`;
     if (pid && (await exec("adb", ["-s", serial, "shell", "cat", "/proc/net/unix"])).includes(`@${name}`)) return name;
     await wait(pollMs);
@@ -193,7 +238,7 @@ export function createPageTracker(context: Pick<BrowserContext, "pages">, origin
  */
 export async function openAndroidDriver(serial: string, appId: string, webOrigin: string, app: AppConfig, exec: Exec = execFileText): Promise<AndroidScreenDriver> {
   const { homeTabName, inPageBackNames } = app;
-  const { stackResetScript, sheetCloseName } = app.webview;
+  const { stackResetScript, sheetCloseName, overlayCloseScript } = app.webview;
   const browser = await connect(exec, serial, appId);
   const context = browser.contexts()[0];
   if (!context) {
@@ -214,15 +259,46 @@ export async function openAndroidDriver(serial: string, appId: string, webOrigin
   /**
    * 이름 규칙으로 요소를 찾아 누를 자리를 돌려준다. 찾기와 좌표 읽기를 한 번의 evaluate로 한다.
    * 따로 하면 그사이 화면이 다시 그려져 표시가 사라진다(금액 입력 키패드 등).
+   * 누를 자리는 위치가 멈출 때까지 다시 재고(스크롤·전환 애니메이션·자동으로 넘어가는 캐러셀), 그 자리 맨 위 요소가 대상일 때만 돌려준다.
+   * 캐러셀 슬라이드를 재는 사이 슬라이드가 넘어가 화면 밖을 누르고, 밀린 화면에서 엉뚱한 버튼을 누른 적이 있다.
+   * 화면 밖이거나 가려졌으면 `blocked`에 이유를 담는다.
    */
   const locate = async (page: Page, name: string, role: ClickRole, match: ClickMatch = "exact"): Promise<TapPoint | null> => {
-    const script = `(function () {
+    const script = `(async function () {
       if (!(function () { ${markButtonScript} }).apply(null, [${JSON.stringify(name)}, ${JSON.stringify(role)}, ${JSON.stringify(match)}])) return null;
       const el = document.querySelector("[${clickMarkAttribute}]");
       // 가운데로 올린다. 화면 아래 끝에 두면 떠 있는 하위 메뉴 밑에 깔려 탭이 그쪽에 간다.
       el.scrollIntoView({ block: "center", inline: "nearest" });
-      const rect = el.getBoundingClientRect();
-      return { x: rect.x + rect.width / 2, y: rect.y + rect.height * ${role === "link" ? linkTapHeightRatio : 0.5}, ratio: window.devicePixelRatio, viewHeight: window.innerHeight, href: el.getAttribute("href") };
+      const read = () => { const r = el.getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; };
+      let rect = read();
+      for (let i = 0; i < ${settleSamples}; i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, ${settleSampleMs}));
+        const next = read();
+        const still = next.every((value, k) => Math.abs(value - rect[k]) < 1);
+        rect = next;
+        if (still) break;
+      }
+      const baseY = ${role === "link" ? linkTapHeightRatio : 0.5};
+      const at = (fx, fy) => ({ x: rect[0] + rect[2] * fx, y: rect[1] + rect[3] * fy });
+      const center = at(0.5, baseY);
+      const point = (spot) => ({ x: spot.x, y: spot.y, ratio: window.devicePixelRatio, viewHeight: window.innerHeight, href: el.getAttribute("href") });
+      const inView = (spot) => spot.x >= 0 && spot.x <= window.innerWidth && spot.y >= 0 && spot.y <= window.innerHeight;
+      if (!inView(center)) return { ...point(center), blocked: "화면 밖에 있습니다" };
+      // 스택 아래 화면의 같은 이름 버튼을 찾았어도, 그 자리 맨 위가 같은 이름 버튼이면 그걸 누르는 것과 같다
+      const nameOf = (node) => (node.getAttribute("aria-label") || node.innerText || node.title || "").replace(/\\s+/g, " ").trim();
+      const reaches = (hit) => {
+        if (!hit) return false;
+        if (hit === el || el.contains(hit)) return true;
+        const twin = hit.closest ? hit.closest('button, [role="button"], a[href], [role="link"]') : null;
+        return Boolean(twin) && twin !== el && nameOf(twin) === nameOf(el);
+      };
+      // 가운데가 떠 있는 광고(iframe) 등에 덮이면 요소 안 다른 자리를 쓴다(상품 카드 위 광고 등)
+      const spots = [[0.5, baseY], [0.25, baseY], [0.75, baseY], [0.5, 0.25], [0.15, baseY], [0.85, baseY]].map(([fx, fy]) => at(fx, fy)).filter(inView);
+      const free = spots.find((spot) => reaches(document.elementFromPoint(spot.x, spot.y)));
+      if (free) return point(free);
+      const hit = document.elementFromPoint(center.x, center.y);
+      const label = hit ? hit.tagName.toLowerCase() + (typeof hit.className === "string" && hit.className ? "." + hit.className.split(/\\s+/).slice(0, 2).join(".") : "") : "없음";
+      return { ...point(center), blocked: "다른 요소(" + label + ")에 가려져 있습니다" };
     })()`;
     return page.evaluate<TapPoint | null>(script).catch(() => null);
   };
@@ -232,7 +308,7 @@ export async function openAndroidDriver(serial: string, appId: string, webOrigin
    * adb `input tap`은 사람 손가락과 같은 자리를 누른다. 링크는 세로 3/4 지점을 누른다:
    * 하단 탭은 WebView 아래 끝에 걸쳐 있어 가운데를 누르면 네이티브 탭바 경계에 닿아 안 먹을 수 있다.
    */
-  const tapAt = async (point: TapPoint, forcePopupCheck: boolean) => {
+  const tapAt = async (point: TapPoint, forcePopupCheck: boolean, relocate?: () => Promise<TapPoint | null>) => {
     // uiautomator 덤프는 3초쯤 걸린다. WebView 위치는 한 번만, 팝업은 팝업이 덮는 화면 아래쪽을 누를 때만 본다.
     const inPopupArea = point.y > point.viewHeight * adValidatorTopRatio;
     webViewTopLeft ??= webViewOrigin(await dumpScreen(exec, serial, false));
@@ -240,6 +316,11 @@ export async function openAndroidDriver(serial: string, appId: string, webOrigin
       // 팝업 확인은 보조다. `--windows` 덤프가 가끔 실패해도 누르기는 그대로 한다.
       const screen = await dumpScreen(exec, serial, true).catch(() => "");
       await dismissAdValidator(exec, serial, screen);
+      // 덤프하는 3초 사이 화면이 움직였을 수 있다(캐러셀). 누르기 직전에 다시 잰다.
+      // 다시 못 찾으면(맨 위 WebView가 바뀌는 중 등) 처음 잰 자리를 쓴다. 가려졌다고 확인된 경우에만 멈춘다.
+      const fresh = relocate ? await relocate() : point;
+      if (fresh?.blocked) throw new Error(`누르기 직전 위치가 바뀌었습니다: ${fresh.blocked}.`);
+      if (fresh) point = fresh;
     }
     const x = Math.round(webViewTopLeft.x + point.x * point.ratio);
     const y = Math.round(webViewTopLeft.y + point.y * point.ratio);
@@ -250,9 +331,13 @@ export async function openAndroidDriver(serial: string, appId: string, webOrigin
    * 링크는 그 경로에 도착해야 누른 것이다. 하단 탭은 팝업이 탭 직전에 다시 떠서 한 번 안 먹을 수 있다.
    * 그때만 팝업을 다시 보고 한 번 더 누른다.
    */
-  const followLink = async (point: TapPoint, name: string, path: string) => {
+  const followLink = async (point: TapPoint, name: string, path: string, relocate: () => Promise<TapPoint | null>) => {
     for (let attempt = 0; attempt < linkTapAttempts; attempt += 1) {
-      if (attempt > 0) await tapAt(point, true);
+      if (attempt > 0) {
+        // 다시 누를 때는 위치를 새로 잰다. 이미 다른 화면이면(늦게 도착) 찾지 못해도 도착 여부만 본다.
+        const fresh = await relocate();
+        if (fresh && !fresh.blocked) await tapAt(fresh, true, relocate);
+      }
       if (samePath(path, pathOf(await pages.arrive(path, linkArriveWaitMs)))) return;
     }
     throw new Error(`「${name}」 링크를 눌렀지만 ${path}로 가지 않았습니다.`);
@@ -264,7 +349,9 @@ export async function openAndroidDriver(serial: string, appId: string, webOrigin
    */
   const closeSheets = async () => {
     for (let attempt = 0; attempt < sheetCloseAttempts; attempt += 1) {
-      const point = await locate(pages.current(), sheetCloseName, "button");
+      // 닫기가 여럿이면(딤 뒤에 깔린 다른 시트) 지금 누를 수 있는 것을 고른다. 첫 번째만 보면 가려진 것을 집고 그냥 넘어가
+      // 시트 딤이 남아 다음 플로우가 전부 홈 탭을 못 눌렀다
+      const point = await pages.current().evaluate<TapPoint | null>(reachableCloseScript(sheetCloseName)).catch(() => null);
       if (!point) return;
       await tapAt(point, false);
       await wait(stackSettleMs);
@@ -278,7 +365,7 @@ export async function openAndroidDriver(serial: string, appId: string, webOrigin
   const leaveInPageScreen = async () => {
     for (const name of inPageBackNames) {
       const point = await locate(pages.current(), name, "button");
-      if (!point) continue;
+      if (!point || point.blocked) continue;
       await tapAt(point, false);
       await wait(stackSettleMs);
       return;
@@ -289,16 +376,41 @@ export async function openAndroidDriver(serial: string, appId: string, webOrigin
     // iOS와 같은 이름 규칙(글자 기준). Playwright 접근 가능한 이름은 아이콘 alt까지 붙여 「채팅 채팅」이 된다.
     // JS click()은 제스처가 필요한 스택 이동을 안 일으킨다. 찾기만 하고 실제 탭으로 누른다.
     const deadline = Date.now() + clickWaitMs;
+    let lastBlocked: string | undefined;
     for (;;) {
-      const page = pages.current();
-      const point = await locate(page, name, role, match);
-      if (point) {
-        await tapAt(point, false);
+      // 앱을 막 다시 띄우면 WebView를 새로 만드는 동안 앱 페이지가 잠깐 하나도 없다(재시작 직후).
+      // 누를 때까지 기다리는 시간 안에서는 다시 찾는다. 끝내 없으면 그 오류(로그인 화면일 수 있음)를 그대로 낸다.
+      let page: Page;
+      try {
+        page = pages.current();
+      } catch (error) {
+        if (Date.now() >= deadline) throw error;
+        await wait(pollMs);
+        continue;
+      }
+      // 홈 탭은 웹 배포마다 글자가 다를 수 있어(`homeTabLabels`) 화면에 있는 글자를 고른다
+      let label = name;
+      let point: TapPoint | null = null;
+      for (const candidate of clickLabels(app, name, role)) {
+        const found = await locate(page, candidate, role, match);
+        if (!found) continue;
+        label = candidate;
+        point = found;
+        if (!found.blocked) break;
+      }
+      const relocate = () => locate(page, label, role, match);
+      // 화면 밖·가려짐은 기다린다(캐러셀이 돌아오거나 토스트·전환이 끝나면 누를 수 있다).
+      if (point && !point.blocked) {
+        await tapAt(point, false, relocate);
         // 하단 탭 링크는 탭마다 따로 있는 WebView를 앞으로 꺼낼 수 있다. 링크 경로의 화면으로 옮겨 간다.
-        if (point.href) await followLink(point, name, new URL(point.href, page.url()).pathname);
+        if (point.href) await followLink(point, name, new URL(point.href, page.url()).pathname, relocate);
         return;
       }
-      if (Date.now() >= deadline) throw new Error(`"${name}" ${role === "link" ? "링크를" : "버튼을"} 찾지 못했습니다.`);
+      lastBlocked = point?.blocked;
+      if (Date.now() >= deadline) {
+        const what = role === "link" ? "링크" : "버튼";
+        throw new Error(lastBlocked ? `"${name}" ${role === "link" ? "링크가" : "버튼이"} ${lastBlocked}. 누르지 않았습니다.` : `"${name}" ${what}를 찾지 못했습니다.`);
+      }
       await wait(pollMs);
     }
   };
@@ -334,6 +446,8 @@ export async function openAndroidDriver(serial: string, appId: string, webOrigin
           await Promise.all(appPages(context, origin).map(resetStack));
           await wait(stackSettleMs);
           pages.forget();
+          // 화면 전체를 덮는 창(상담 채팅 메신저 iframe 등)은 스택 닫기·시트 닫기·시스템 뒤로로 안 닫힌다. 앱 설정의 닫기 스크립트를 보낸다
+          if (overlayCloseScript) await Promise.all(appPages(context, origin).map((page) => page.evaluate(overlayCloseScript).catch(() => undefined)));
           await closeSheets();
           await clickButton(homeTabName, "link");
           return;

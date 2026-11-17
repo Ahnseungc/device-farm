@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+
+import { diffMessage } from "@device-farm/core/baseline/diff";
 import { setImmediate } from "node:timers/promises";
 
 import type { ScreenDriver } from "@device-farm/core/device/driver";
@@ -66,6 +68,23 @@ function statusOf(run: DeviceRun, id: string): string {
 }
 
 const request = { kind: "dev", version: "2.1.5", deviceIds: "all" } as const;
+
+// 깨진 화면만 `화면 깨짐 점검 · 경로`로 남고, 같은 경로는 한 번만 잰다
+{
+  const measured: string[] = [];
+  const fake = deps([device("A")], {}, {
+    scenarios: [scenario("s1"), scenario("s1-again"), scenario("s2")].map((item) => ({ ...item, path: item.name === "s2" ? "/ok" : "/broken" })),
+    checkLayout: async (_driver, screenPath) => {
+      measured.push(screenPath);
+      return [{ id: "layout-overlap", title: "글자 겹침", ok: screenPath !== "/broken", message: "글자끼리 겹칩니다: 「a」↔「b」" }];
+    },
+  });
+  const run = await runDevices(request, fake);
+  assert.deepEqual(measured, ["/broken", "/ok"]);
+  const layout = run.outcomes[0].screens.filter((screen) => screen.scenario.startsWith("화면 깨짐 점검 · "));
+  assert.deepEqual(layout.map((screen) => [screen.scenario, screen.status]), [["화면 깨짐 점검 · /broken", "failed"]]);
+  assert.equal(statusOf(run, "A"), "failed");
+}
 
 {
   const fake = deps([device("A"), device("B")], { A: { s2: new Error("device disconnected") } });
@@ -241,7 +260,7 @@ const request = { kind: "dev", version: "2.1.5", deviceIds: "all" } as const;
   const run = await runDevices(request, fake);
   assert.deepEqual(ran, ["f1", "f2"]);
   assert.equal(run.scenarioCount, scenarios.length + 2);
-  assert.deepEqual(run.outcomes[0].screens.slice(-2).map((screen) => [screen.scenario, screen.status]), [["플로우 · f1", "passed"], ["플로우 · f2", "failed"]]);
+  assert.deepEqual(run.outcomes[0].screens.slice(-2).map((screen) => [screen.scenario, screen.status]), [["플로우 점검 · f1", "passed"], ["플로우 점검 · f2", "failed"]]);
   assert.equal(statusOf(run, "A"), "failed");
   // 진행 패널: 지금 스텝은 running, 앞 스텝은 passed. 플로우가 끝나면 지운다.
   assert.equal(stepViews.at(-1), "passed:홈에서 시작 「홈」,passed:누르기 「혜택」,running:누르기 「출석체크」");
@@ -268,7 +287,7 @@ const request = { kind: "dev", version: "2.1.5", deviceIds: "all" } as const;
   assert.deepEqual(ran, ["q1", "q2"]);
   assert.equal(run.scenarioCount, scenarios.length + 2);
   const [q1, q2] = run.outcomes[0].screens.slice(-2);
-  assert.deepEqual([q1.scenario, q1.status, q2.scenario, q2.status], ["데이터 · q1", "passed", "데이터 · q2", "failed"]);
+  assert.deepEqual([q1.scenario, q1.status, q2.scenario, q2.status], ["데이터 점검 · q1", "passed", "데이터 점검 · q2", "failed"]);
   assert.equal(q2.message, "1개 실패 · 총자산 = 구성 항목 합: 1원 차이");
   assert.equal(q2.checks?.length, 2);
   assert.equal(statusOf(run, "A"), "failed");
@@ -294,6 +313,22 @@ const request = { kind: "dev", version: "2.1.5", deviceIds: "all" } as const;
   assert.deepEqual(flowsRan, ["f"]);
   assert.equal(run.scenarioCount, 1);
   assert.equal(statusOf(run, "A"), "passed");
+
+  // 플로우 하나만: 고른 플로우만 돌고 데이터 점검은 건너뛴다
+  flowsRan.length = 0;
+  let qaRan = 0;
+  const one = await runDevices(
+    { ...request, flowsOnly: true, flowIds: ["g"] },
+    deps([device("A")], {}, {
+      flows: [flow, { ...flow, id: "g", name: "g" }],
+      runFlow: async (_driver, item) => (flowsRan.push(item.name), { status: "passed", steps: [] }),
+      qaScreens: [{ path: "/q", name: "q", apis: {}, rules: [] }],
+      runQa: async () => ((qaRan += 1), { path: "/q", name: "q", apis: [], checks: [] }),
+    }),
+  );
+  assert.deepEqual(flowsRan, ["g"]);
+  assert.equal(qaRan, 0);
+  assert.equal(one.scenarioCount, 1);
 }
 
 // 버튼 눌러보기: 켜면 정상 화면마다 누르고, 에러 버튼이 있으면 그 화면은 failed. 가드를 못 걸면 누르지 않고 이유를 남긴다.
@@ -320,6 +355,32 @@ const request = { kind: "dev", version: "2.1.5", deviceIds: "all" } as const;
   assert.equal(mapped.length, 2);
   assert.deepEqual(run.outcomes[0].screens.map((screen) => screen.status), ["passed", "failed", "login_required"]);
   assert.equal(run.outcomes[0].screens[1].message, "버튼 1개 · 에러 1(저장)");
+
+  // 기준 화면과 그림만 다른 화면도 버튼을 누른다. 다른 실패(안 열림)는 누르지 않는다
+  const diffPressed: string[] = [];
+  const diffSetup = { ...setup, recordMap: () => undefined, checkButtons: async (target: ScreenDriver) => ((diffPressed.push(await target.currentPath())), []) };
+  let diffIndex = 0;
+  const diffRun = await runDevices(
+    { ...request, buttonCheck: true },
+    deps([device("D")], {}, {
+      buttonCheck: diffSetup,
+      checkScreen: async (): Promise<ScreenCheck> => [{ status: "failed", message: diffMessage }, { status: "failed", message: "화면이 열리지 않았습니다." }, { status: "passed" }][diffIndex++] as ScreenCheck,
+    }),
+  );
+  assert.equal(diffPressed.length, 2);
+
+  // 시나리오 주소가 넘어가 열리면 실제 주소로 비교·기록한다(「/」 → 「/home」)
+  const seen: { screenPath: string; from: string }[] = [];
+  const redirected = { ...driver, currentPath: async () => "/home" };
+  await runDevices(
+    { ...request, buttonCheck: true },
+    deps([device("E")], {}, {
+      openDriver: async () => redirected,
+      buttonCheck: { ...setup, recordMap: (from: string) => void seen.push({ screenPath: "", from }), checkButtons: async (_target: ScreenDriver, options: { screenPath: string }) => ((seen.push({ screenPath: options.screenPath, from: "" })), []) },
+    }),
+  );
+  assert.ok(seen.length > 0 && seen.every((item) => (item.screenPath || item.from) === "/home"));
+  assert.deepEqual(diffRun.outcomes[0].screens.map((screen) => screen.status), ["failed", "failed", "passed"]);
 
   const off = await runDevices(request, deps([device("B")], {}, { buttonCheck: setup }));
   assert.equal(off.outcomes[0].screens[0].buttons, undefined);

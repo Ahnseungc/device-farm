@@ -10,12 +10,16 @@
   box-sizing: border-box;
 }
 
-/* 점검 실행 폼 */
+/* 새 빌드 점검 폼(모달 안) */
 .devices-form {
   display: flex;
   flex-direction: column;
   gap: var(--seed-dimension-x5);
-  padding: var(--seed-dimension-x5);
+  padding: 0 var(--seed-dimension-x6) var(--seed-dimension-x6);
+}
+
+.devices-page h1 {
+  margin: 0;
 }
 
 .devices-form-row {
@@ -43,6 +47,13 @@
 }
 
 .devices-device {
+  all: unset;
+  box-sizing: border-box;
+  background: var(--seed-color-bg-layer-default);
+  border: 1px solid var(--seed-color-stroke-neutral-muted);
+  border-radius: var(--seed-radius-r4);
+  cursor: pointer;
+  transition: box-shadow var(--farm-dur-micro) var(--farm-ease-out), transform var(--farm-dur-micro) var(--farm-ease-out);
   display: flex;
   gap: var(--seed-dimension-x4);
   padding: var(--seed-dimension-x4);
@@ -167,4 +178,27 @@
     max-width: none;
     width: 100%;
   }
+}
+
+/* 진행 줄 자리 고정(한 줄) */
+.devices-card-step {
+  min-height: 1.5em;
+  margin: 0;
+}
+
+.devices-device:hover {
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--seed-color-fg-neutral) 10%, transparent);
+}
+
+.devices-device:active {
+  transform: scale(0.99);
+}
+
+.devices-device:focus-visible {
+  outline: 2px solid var(--seed-color-stroke-focus-ring);
+  outline-offset: 2px;
+}
+
+.devices-card-more {
+  margin-top: auto;
 }

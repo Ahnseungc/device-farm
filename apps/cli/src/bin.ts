@@ -28,7 +28,15 @@ const commands: Record<string, Command> = {
   record: { usage: 'record --device <Android serial> [--seconds 300] [--name "플로우 이름"]', summary: "사람 조작을 녹화해 화면 지도·플로우 후보로", run: () => import("./record") },
   qa: { usage: "qa --device <id> [--path /home]", summary: "화면 데이터 QA(API 응답 ↔ 화면 글자)", run: () => import("./qa-run") },
   "policy-watch": { usage: "policy-watch [--extract <pageId>] [--figma]", summary: "Confluence 정책 바뀜 감지·규칙 뽑기·피그마 캐시", run: () => import("./policy-watch") },
-  "policy-check": { usage: "policy-check --device <id> [--path /my/orders]", summary: "정책·피그마 대조를 기기 한 대에서", run: () => import("./policy-check") },
+  "policy-check": { usage: "policy-check --device <id> [--path /my/orders] [--slack]", summary: "정책·피그마 대조를 기기 한 대에서(--slack이면 새 불일치를 슬랙에)", run: () => import("./policy-check") },
+  "layout-check": {
+    usage: "layout-check --device <id> [--path /home] [--path ...] [--shots]",
+    summary: "화면 깨짐 점검(넘침·잘림·겹침·빈 화면)을 기기 한 대에서",
+    run: () => import("./layout-check"),
+  },
+  "daily-report": { usage: "daily-report [--day 2026-11-13] [--slack]", summary: "Claude 아침 분석을 지금 만든다(--slack이면 SLACK_CHANNEL_DEV에 보낸다)", run: () => import("./daily-report") },
+  "db-import": { usage: "db-import [--root test-results]", summary: "옛 test-results JSON 기록을 test-results/farm.db로 옮긴다", run: () => import("./db-import") },
+  "farm-password": { usage: "farm-password", summary: "팀 비밀번호 로그인용 FARM_PASSWORD_HASH 값을 만든다", run: async () => (await import("./farm-password")).farmPassword() },
   "explore-allowlist": { usage: "explore-allowlist", summary: "FARM_OPENAPI_URL 스펙의 쓰기 API를 explore/allowlist.json에 deny로 추가", run: () => import("./explore-allowlist") },
   mcp: { usage: "mcp", summary: "Claude Code용 MCP 서버(stdio)", run: runMcp },
 };

@@ -67,7 +67,8 @@ export async function checkScreen(
   if (await driver.hasText(appErrorText)) {
     return { status: "failed", message: `${scenario.path} 에서 앱 오류가 났습니다.` };
   }
-  if (isLoginPath(await driver.currentPath(), loginPaths)) return { status: "login_required" };
+  // 로그인 화면 자체를 보는 시나리오(「아이디 로그인 화면」)는 로그인이 풀린 것이 아니다. 이걸 로그인 필요로 봐 점검 전체가 멈췄다
+  if (!isLoginPath(scenario.path, loginPaths) && isLoginPath(await driver.currentPath(), loginPaths)) return { status: "login_required" };
   const screenshot = blankStatusBar(await driver.screenshot(), device);
   const key = baselineKey(device, scenario.name);
   if (!hasBaseline(key, baselineRoot)) {

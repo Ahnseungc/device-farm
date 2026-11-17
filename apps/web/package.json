@@ -9,8 +9,11 @@
     "@karrotmarket/react-monochrome-icon": "^1.30.0",
     "@seed-design/css": "^3.0.0",
     "@seed-design/react": "^3.0.0",
+    "es-toolkit": "^1.53.2",
+    "framer-motion": "^12.26.2",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/react": "^19.2.2",

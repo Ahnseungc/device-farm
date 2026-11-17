@@ -1,0 +1,145 @@
+/* 「오늘」 화면. SEED 토큰만 쓴다. */
+.today-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x4);
+  min-width: 0;
+}
+
+/* 넓은 화면에서 모달을 넉넉하게 */
+.today-dialog {
+  width: min(1040px, calc(100% - 32px));
+  max-width: none;
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
+}
+
+/* 모달 안 카드는 바탕과 구분되게 */
+.today-dialog .today-card {
+  background: var(--seed-color-bg-layer-floating);
+}
+
+.today-page h1,
+.today-page h2 {
+  margin: 0;
+}
+
+/* 아침 요약 | 남은 문제·최근 점검. 좁으면 위아래로 */
+.today-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(260px, 2fr);
+  gap: var(--seed-dimension-x4);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .today-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.today-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x4);
+  min-width: 0;
+  padding: var(--seed-dimension-x5);
+  background: var(--seed-color-bg-layer-default);
+  border: 1px solid var(--seed-color-stroke-neutral-muted);
+  border-radius: var(--seed-radius-r4);
+}
+
+/* 숫자 네 칸은 2×2(넓으면 한 줄) */
+.today-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--seed-dimension-x2);
+}
+
+@media (min-width: 1200px) {
+  .today-stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.today-stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x1);
+  padding: var(--seed-dimension-x3);
+  background: var(--seed-color-bg-neutral-weak);
+  border-radius: var(--seed-radius-r3);
+}
+
+.today-summary {
+  margin: 0;
+  padding: var(--seed-dimension-x3) var(--seed-dimension-x4);
+  background: var(--seed-color-bg-neutral-weak);
+  border-radius: var(--seed-radius-r2);
+  color: var(--seed-color-fg-neutral);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.today-issues,
+.today-runs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.today-runs {
+  gap: var(--seed-dimension-x2);
+  color: var(--seed-color-fg-neutral);
+  font-size: 14px;
+}
+
+.today-issue {
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x1);
+}
+
+.today-more summary {
+  cursor: pointer;
+  color: var(--seed-color-fg-neutral-muted);
+  font-size: 14px;
+}
+
+.today-more[open] summary {
+  margin-bottom: var(--seed-dimension-x3);
+}
+
+.today-kinds {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--seed-dimension-x2);
+}
+
+.today-kind {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x1);
+  padding: var(--seed-dimension-x3);
+  border: 1px solid var(--seed-color-stroke-neutral-muted);
+  border-radius: var(--seed-radius-r3);
+  cursor: pointer;
+}
+
+.today-kind:hover:not(:disabled) {
+  background: var(--seed-color-bg-layer-default-pressed);
+}
+
+.today-kind:disabled {
+  cursor: default;
+}
+
+.today-kind:focus-visible {
+  outline: 2px solid var(--seed-color-stroke-focus-ring);
+  outline-offset: 2px;
+}

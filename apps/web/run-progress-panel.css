@@ -18,9 +18,9 @@
 
 .progress-bar-fill {
   height: 100%;
-  border-radius: var(--seed-radius-full);
   background: var(--seed-color-bg-positive-solid);
-  transition: width var(--seed-duration-d4) var(--seed-timing-function-easing);
+  transform-origin: left center;
+  transition: transform var(--farm-dur-medium) var(--farm-ease-out);
 }
 
 .progress-bar-fill[data-failed="true"] {
@@ -41,25 +41,9 @@
 .progress-failures li {
   display: flex;
   flex-direction: column;
-  gap: var(--seed-dimension-x0_5, 2px);
+  gap: var(--seed-dimension-x0_5);
 }
 
-.progress-reopen {
-  position: fixed;
-  right: var(--seed-dimension-x5);
-  bottom: var(--seed-dimension-x5);
-  z-index: 20;
-  padding: var(--seed-dimension-x3) var(--seed-dimension-x4);
-  border: none;
-  border-radius: var(--seed-radius-full);
-  background: var(--seed-color-bg-neutral-inverted);
-  color: var(--seed-color-fg-neutral-inverted);
-  font: inherit;
-  font-size: 14px;
-  font-weight: 600;
-  box-shadow: var(--seed-shadow-s2);
-  cursor: pointer;
-}
 
 /* 지금 도는 플로우의 스텝. 지금 스텝만 굵게, 끝난 스텝은 초록 체크. */
 .progress-flow-steps {

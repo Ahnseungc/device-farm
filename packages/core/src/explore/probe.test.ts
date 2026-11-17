@@ -32,6 +32,9 @@ assert.equal(kinds({ ...clean, offscreen: Array.from({ length: 25 }, () => ({ la
 assert.deepEqual(kinds({ ...clean, bodyTextLength: 0 }), ["blank"]);
 assert.deepEqual(kinds({ ...clean, bodyTextLength: 0, imageCount: 1 }), []);
 assert.deepEqual(kinds({ ...clean, bottomFixed: [{ label: "cta", bottom: 844 }] }), ["bottom-covered"]);
+// 반올림 오차(0.43px)는 가림이 아니다
+assert.deepEqual(kinds({ ...clean, bottomFixed: [{ label: "nav", bottom: 810.43 }] }), []);
+assert.deepEqual(kinds({ ...clean, bottomFixed: [{ label: "nav", bottom: 811.5 }] }), ["bottom-covered"]);
 
 // 허용한 쓰기 409 / 같은 요청 500 / GET 400
 const url = "https://dev.shop.example.com/api/v1/alarm/settings";
@@ -93,5 +96,13 @@ assert.equal(issues.some((issue) => issue.message.includes("409")), false);
 // 허용 목록 없이 보면 허용한 쓰기가 없으므로 409도 오류
 const strict = await probeScreen(fakeDriver("/home", "", clean), ring, 2_000);
 assert.equal(strict.filter((issue) => issue.kind === "network").length, 3);
+
+// 로그를 낸 화면은 이슈의 screen으로 넘긴다
+const tagged = new LogRing(30_000, () => 5_000);
+tagged.push({ source: "network", text: formatNetworkLog("GET", 404, "https://dev.shop.example.com/a/x"), page: "/my" });
+tagged.push({ source: "console", text: "TypeError: y" });
+const taggedIssues = await probeScreen(fakeDriver("/home", "", clean), tagged, 5_000);
+assert.equal(taggedIssues.find((issue) => issue.kind === "network")?.screen, "/my");
+assert.ok(!("screen" in (taggedIssues.find((issue) => issue.kind === "console") ?? {})));
 
 console.log("probe ok");

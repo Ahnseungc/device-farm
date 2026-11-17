@@ -71,6 +71,9 @@ try {
   const login = await checkScreen(fakeDriver({ path: "/login" }), device, scenario, root, ready);
   assert.equal(login.status, "login_required");
   assert.equal(existsSync(root) ? readdirSync(root).length : 0, 0);
+  // 로그인 화면 자체를 보는 시나리오는 로그인 필요가 아니다
+  const loginScreen = await checkScreen(fakeDriver({ path: "/id-sign-in" }), device, { ...scenario, path: "/id-sign-in", name: "아이디 로그인" }, mkdtempSync(path.join(tmpdir(), "check-login-")), ready);
+  assert.notEqual(loginScreen.status, "login_required");
 
   const first = await checkScreen(fakeDriver({}), device, scenario, root, ready);
   assert.equal(first.status, "candidate");

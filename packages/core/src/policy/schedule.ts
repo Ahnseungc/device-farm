@@ -4,15 +4,15 @@
  */
 export const policyCheckHour = 2;
 
-/** now 기준 가장 최근의 예정 시각(오늘 2시가 아직이면 어제 2시) */
-export function lastScheduledAt(now: Date, hour = policyCheckHour): Date {
-  const scheduled = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, 0, 0, 0);
+/** now 기준 가장 최근의 예정 시각(오늘 2시가 아직이면 어제 2시). minute로 3시 30분 같은 시각도 쓴다 */
+export function lastScheduledAt(now: Date, hour = policyCheckHour, minute = 0): Date {
+  const scheduled = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, minute, 0, 0);
   if (scheduled.getTime() > now.getTime()) scheduled.setDate(scheduled.getDate() - 1);
   return scheduled;
 }
 
-export function nextScheduledAt(now: Date, hour = policyCheckHour): Date {
-  const next = lastScheduledAt(now, hour);
+export function nextScheduledAt(now: Date, hour = policyCheckHour, minute = 0): Date {
+  const next = lastScheduledAt(now, hour, minute);
   next.setDate(next.getDate() + 1);
   return next;
 }

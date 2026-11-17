@@ -22,9 +22,10 @@ import { defaultGuard } from "@device-farm/engine/explore/run";
 import { addCandidate, readReady } from "@device-farm/engine/flows/store";
 import { recordScreenMap } from "@device-farm/engine/screen-map-store";
 import { loadAppConfig, resolveAppConfigFile } from "@device-farm/server/app-config";
-import { loadDotEnv, webOrigin } from "@device-farm/server/env";
+import { farmLocalOrigin, loadDotEnv, webOrigin } from "@device-farm/server/env";
 import { loadExploreInputs } from "@device-farm/server/explore";
 
+const farmRunsPath = "/api/devices/runs/latest";
 const agentIdHashLength = 8;
 
 // 사용자 프로젝트(Claude Code를 연 폴더)의 farm.config.ts를 먼저 본다. 그다음 디바이스팜 루트 기준으로 .env·test-results를 쓴다.
@@ -36,7 +37,6 @@ const configFile = process.env.FARM_CONFIG ? resolveAppConfigFile(process.env, u
 process.chdir(farmRoot);
 loadDotEnv();
 const app = await loadAppConfig(configFile, (line) => console.error(line));
-const farmRunsUrl = `http://127.0.0.1:${Number(process.env.FARM_PORT) || 5173}/api/devices/runs/latest`;
 
 interface Active {
   task: string;
@@ -66,7 +66,7 @@ async function guarded(work: () => Promise<unknown>): Promise<ToolResult> {
 
 /** 디바이스팜 점검이 도는 중이면 같은 기기를 같이 만지지 않는다. 서버가 꺼져 있으면 확인 없이 진행한다. */
 async function farmBusy(): Promise<boolean> {
-  const response = await fetch(farmRunsUrl).catch(() => null);
+  const response = await fetch(`${farmLocalOrigin()}${farmRunsPath}`).catch(() => null);
   if (!response?.ok) return false;
   const run = (await response.json().catch(() => null)) as { finishedAt?: string | null } | null;
   return Boolean(run && run.finishedAt === null);

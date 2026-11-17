@@ -29,18 +29,31 @@ export interface MapBlock {
 export interface MapCursor {
   path: string;
   texts: string[];
+  /**
+   * 팝업이 떠 있다. 지도는 팝업 안 버튼을 모르고, 뒤 화면 버튼은 팝업에 가려 못 누른다.
+   * 그래서 문구 확인과 홈으로만 이어 붙인다(팝업 뒤 뒤 화면 카드를 고른 플로우가 실패했다).
+   */
+  popup?: boolean;
 }
 
 export const startCursorOf = (rules: Pick<MapRules, "homePath">): MapCursor => ({ path: rules.homePath, texts: [] });
+
+/**
+ * 시세·보유량처럼 날마다 바뀌는 값이 든 이름(「금 1.5g 278,358원」처럼 보유량·금액이 든 버튼). 이름으로 찾는 플로우는 다음 날 못 찾으니 블록·문구 후보에서 뺀다.
+ * 금액(원)·중량(g·kg·돈)·비율(%)이 붙은 숫자, 또는 천 단위 쉼표가 든 숫자.
+ */
+const changingValuePattern = /\d[\d,.]*\s*(원|g|kg|돈|%)|\d{1,3}(,\d{3})+/i;
+export const hasChangingValue = (text: string) => changingValuePattern.test(text);
+const steadyTexts = (texts: readonly string[] | undefined) => (texts ?? []).filter((text) => !hasChangingValue(text));
 
 /** 하단 탭 링크 + 지도에서 이 화면의 이동·팝업 버튼. 반응 없음·에러·금지 버튼은 뺀다. */
 export function blocksAt(edges: readonly MapEdge[], path: string, rules: MapRules): MapBlock[] {
   const tabs: MapBlock[] = tabNamesOf(rules).map((name) => ({ kind: "tab", step: { type: "click", target: { role: "link", name } }, to: rules.tabPaths[name], texts: [] }));
   const own = edges.flatMap((edge): MapBlock[] => {
-    if (edge.from !== path || rules.forbiddenClickNames.includes(edge.name)) return [];
+    if (edge.from !== path || rules.forbiddenClickNames.includes(edge.name) || hasChangingValue(edge.name)) return [];
     const step = { type: "click", target: { role: edge.role, name: edge.name } } as const;
-    if (edge.kind === "navigate" && edge.to) return [{ kind: "navigate", step, to: edge.to, texts: edge.texts ?? [] }];
-    if (edge.kind === "popup") return [{ kind: "popup", step, to: path, texts: edge.texts ?? [] }];
+    if (edge.kind === "navigate" && edge.to) return [{ kind: "navigate", step, to: edge.to, texts: steadyTexts(edge.texts) }];
+    if (edge.kind === "popup") return [{ kind: "popup", step, to: path, texts: steadyTexts(edge.texts) }];
     return [];
   });
   return [...tabs, ...own];
@@ -52,11 +65,14 @@ export function advance(edges: readonly MapEdge[], cursor: MapCursor, step: Flow
   if (step.type === "expectText") {
     return cursor.texts.includes(step.text) ? cursor : `「${step.text}」는 앞 블록을 누른 뒤 지도에 남은 문구가 아닙니다.`;
   }
+  // 화면 지도는 입력칸을 모른다. 입력은 지금 화면에 남는 것으로 본다
+  if (step.type === "fill" || step.type === "design") return cursor;
+  if (cursor.popup) return `팝업이 떠 있어 ${cursor.path} 화면 버튼 「${step.target.name}」를 누를 수 없습니다. 홈으로 돌아간 뒤 이어 주세요.`;
   const block = blocksAt(edges, cursor.path, rules).find(
     (item) => item.step.target.role === step.target.role && item.step.target.name === step.target.name,
   );
   if (!block) return `「${step.target.name}」는 ${cursor.path} 화면 지도에 없는 버튼입니다.`;
-  return { path: block.to, texts: block.texts };
+  return block.kind === "popup" ? { path: block.to, texts: block.texts, popup: true } : { path: block.to, texts: block.texts };
 }
 
 /** 홈부터 스텝을 다시 밟아 본다. 끝난 화면 상태 또는 사유 문자열. */

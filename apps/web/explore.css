@@ -89,3 +89,84 @@
 .explore-table tbody tr:last-child td {
   border-bottom: none;
 }
+
+/* ── 탐색(토스식) ── */
+.explore-page h1,
+.explore-page h2 {
+  margin: 0;
+}
+
+.explore-devices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--seed-dimension-x1_5);
+}
+
+.explore-device {
+  all: unset;
+  padding: var(--seed-dimension-x1_5) var(--seed-dimension-x3);
+  border: 1px solid var(--seed-color-stroke-neutral-muted);
+  border-radius: var(--seed-radius-full);
+  background: var(--seed-color-bg-layer-default);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.explore-device[aria-pressed="true"] {
+  background: var(--seed-color-bg-neutral-inverted);
+  color: var(--seed-color-fg-neutral-inverted);
+  border-color: var(--seed-color-bg-neutral-inverted);
+}
+
+.explore-run {
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x4);
+}
+
+.explore-hero {
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x1);
+  padding: var(--seed-dimension-x5);
+  background: color-mix(in srgb, var(--seed-color-palette-green-100) 55%, var(--seed-color-bg-layer-default));
+  border-radius: var(--seed-radius-r4);
+}
+
+.explore-issue {
+  border-color: color-mix(in srgb, var(--seed-color-fg-critical) 35%, var(--seed-color-stroke-neutral-muted));
+}
+
+.explore-issue-message {
+  overflow-wrap: anywhere;
+}
+
+.explore-path-step {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--seed-dimension-x1);
+  color: var(--seed-color-fg-neutral-subtle);
+}
+
+.explore-replay {
+  min-width: 200px;
+  min-height: 1.4em;
+}
+
+.explore-more {
+  padding: var(--seed-dimension-x3) var(--seed-dimension-x4);
+  background: var(--seed-color-bg-layer-default);
+  border: 1px solid var(--seed-color-stroke-neutral-muted);
+  border-radius: var(--seed-radius-r3);
+}
+
+.explore-more summary {
+  cursor: pointer;
+  color: var(--seed-color-fg-neutral-muted);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.explore-more[open] summary {
+  margin-bottom: var(--seed-dimension-x3);
+}

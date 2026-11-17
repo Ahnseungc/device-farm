@@ -1,7 +1,10 @@
 import type { Issue, IssueKind } from "../explore/probe";
 
-/** 오류로 치는 판정. 레이아웃(overflow·offscreen·bottom-covered)은 정확도가 낮아 경고로만 남긴다(설계 문서 판정). */
-const errorKinds: readonly IssueKind[] = ["app-error", "crash", "console", "network", "blank", "login-redirect", "stuck"];
+/**
+ * 오류로 치는 판정. 예전 레이아웃(overflow·offscreen·bottom-covered)은 정확도가 낮아 경고로만 남긴다(설계 문서 판정).
+ * 화면 깨짐 점검(layout)은 움직이는 요소·잘라 주는 부모·팝업 딤을 빼고 재서 오류로 친다.
+ */
+const errorKinds: readonly IssueKind[] = ["app-error", "crash", "console", "network", "blank", "login-redirect", "stuck", "layout"];
 /** 가드가 요청을 끊으면(route.abort) WebView 콘솔에 이 문구가 남는다 */
 const guardAbortText = "ERR_BLOCKED_BY_CLIENT";
 /** 재시작·백그라운드 직후 빈 화면은 로딩으로 본다 (설계 문서 오탐 줄이기) */

@@ -7,11 +7,12 @@
 /**
  * `app/` 아래 파일 → 화면 경로. 라우트 그룹 `(x)`는 빼고, `_`로 시작하는 비공개 폴더나 파일에서 멈춘다. `[id]`는 `*`.
  * 예: `app/(protected)/(shop)/my/orders/_src/A.tsx` → `/my/orders`
+ * 스타일 파일(`app/globals.css`)은 앱 전체 공용이라 화면이 아니다 — 공용 토스트 노드가 홈(`/`)에 붙었다.
  */
 export function routeOfFile(file: string, appDir = "app"): string | null {
   const prefix = appDir.split("/").filter(Boolean);
   const all = file.split("/");
-  if (prefix.some((part, index) => all[index] !== part)) return null;
+  if (prefix.some((part, index) => all[index] !== part) || !/\.(tsx?|jsx?|mdx)$/.test(file)) return null;
   const parts = ["app", ...all.slice(prefix.length)];
   const route: string[] = [];
   for (const part of parts.slice(1, -1)) {

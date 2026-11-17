@@ -1,17 +1,20 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import type { DeviceRun, LogEntry } from "@device-farm/core/device/types";
+import { countCategories, type RunSummary } from "@device-farm/core/runs/summary";
+import type { DeviceOutcome, DeviceRun, LogEntry } from "@device-farm/core/device/types";
 import type { VideoFrame } from "@device-farm/core/logs/ring";
 import { execFileText, type Exec } from "@device-farm/devices/exec";
 
+import { all, farmDb, fromJson, get, run as sql, toJson, transaction, type FarmDb } from "./db/farm-db";
+
+/** 실패 묶음(스크린샷·영상·로그) 폴더. 실행 기록은 farm.db `device_runs`에 있다. */
 export const devicesRoot = path.resolve("test-results/devices");
 export const retentionDays = 30;
 export const restartMessage = "서버 재시작으로 중단됨";
 
 const dayMs = 24 * 60 * 60_000;
-const runFile = "run.json";
 /** 프레임 시각으로 fps를 못 구할 때 (작성자 판단) */
 const fallbackFps = 10;
 
@@ -28,55 +31,117 @@ export interface FailureBundleDeps {
   encodeVideo: (frames: readonly BundleFrame[], outFile: string) => Promise<void>;
 }
 
-function runPath(root: string, runId: string): string {
-  return path.join(root, runId, runFile);
+/** 실행 하나를 DB에 쓴다. 기기·화면 행은 지우고 다시 넣는다(진행 중에도 여러 번 부른다). */
+export function writeRun(run: DeviceRun, db: FarmDb = farmDb()): void {
+  transaction(db, () => {
+    sql(
+      db,
+      `INSERT INTO device_runs (run_id, kind, version, trigger, started_at, finished_at, data) VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (run_id) DO UPDATE SET kind = excluded.kind, version = excluded.version, trigger = excluded.trigger,
+         started_at = excluded.started_at, finished_at = excluded.finished_at, data = excluded.data`,
+      run.runId,
+      run.kind,
+      run.version,
+      run.trigger,
+      run.startedAt,
+      run.finishedAt,
+      JSON.stringify(run),
+    );
+    sql(db, "DELETE FROM device_outcomes WHERE run_id = ?", run.runId);
+    sql(db, "DELETE FROM device_screens WHERE run_id = ?", run.runId);
+    for (const outcome of run.outcomes) writeOutcome(db, run.runId, outcome);
+  });
 }
 
-/** `run.json`. 임시 파일에 쓰고 rename해 반쯤 쓴 파일이 남지 않게 한다. */
-export function writeRun(run: DeviceRun, root = devicesRoot): void {
-  const file = runPath(root, run.runId);
-  mkdirSync(path.dirname(file), { recursive: true });
-  const temp = `${file}.part`;
-  writeFileSync(temp, JSON.stringify(run, null, 2));
-  renameSync(temp, file);
-}
-
-function isDeviceRun(value: unknown): value is DeviceRun {
-  if (typeof value !== "object" || value === null) return false;
-  const run = value as Partial<DeviceRun>;
-  return typeof run.runId === "string" && typeof run.startedAt === "string" && Array.isArray(run.outcomes);
-}
-
-function readRun(file: string): DeviceRun | null {
-  try {
-    const parsed: unknown = JSON.parse(readFileSync(file, "utf8"));
-    return isDeviceRun(parsed) ? parsed : null;
-  } catch {
-    // 없거나 깨진 run.json은 목록에서 뺀다. 지우지는 않는다(보관 정리는 pruneRuns).
-    return null;
+function writeOutcome(db: FarmDb, runId: string, outcome: DeviceOutcome): void {
+  const { device } = outcome;
+  // 같은 기기가 두 번 들어오는 일은 없지만, 있으면 뒤 값으로 덮는다(원본은 data에 그대로 있다)
+  sql(
+    db,
+    `INSERT OR REPLACE INTO device_outcomes (run_id, device_id, platform, model, os_version, app_version, status, message) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    runId,
+    device.id,
+    device.platform,
+    device.model,
+    device.osVersion,
+    device.appVersion,
+    outcome.status,
+    outcome.message ?? null,
+  );
+  for (const [position, screen] of outcome.screens.entries()) {
+    sql(
+      db,
+      `INSERT OR REPLACE INTO device_screens (run_id, device_id, position, scenario, status, message, screenshot, log_dir, checks, steps, buttons) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      runId,
+      device.id,
+      position,
+      screen.scenario,
+      screen.status,
+      screen.message ?? null,
+      screen.screenshot ?? null,
+      screen.logDir ?? null,
+      toJson(screen.checks),
+      toJson(screen.steps),
+      toJson(screen.buttons),
+    );
   }
 }
 
-function runDirs(root: string): string[] {
-  if (!existsSync(root)) return [];
-  return readdirSync(root, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => path.join(root, entry.name));
+type RunRow = { run_id: string; data: string };
+
+const parseRun = (row: RunRow) => fromJson<DeviceRun>(row.data, `device_runs(${row.run_id})`);
+
+/** `since`(ISO) 뒤에 시작한 실행. 오래된 것부터 */
+export function readRunsSince(since: string, db: FarmDb = farmDb()): DeviceRun[] {
+  return all<RunRow>(db, "SELECT run_id, data FROM device_runs WHERE started_at >= ? ORDER BY started_at", since).map(parseRun);
 }
 
-function readRuns(root: string): DeviceRun[] {
-  return runDirs(root).flatMap((dir) => readRun(path.join(dir, runFile)) ?? []);
+/** 최근 실행 요약(「점검 기록」). 실행 JSON을 풀지 않고 표 열로 센다 */
+export function listRunSummaries(limit = 200, db: FarmDb = farmDb()): RunSummary[] {
+  type Row = { run_id: string; kind: string; version: string; trigger: string; started_at: string; finished_at: string | null; label: string | null; app_version: string | null };
+  const rows = all<Row>(
+    db,
+    `SELECT r.run_id, r.kind, r.version, r.trigger, r.started_at, r.finished_at, json_extract(r.data, '$.label') AS label,
+       (SELECT o.app_version FROM device_outcomes o WHERE o.run_id = r.run_id AND o.app_version IS NOT NULL LIMIT 1) AS app_version
+     FROM device_runs r ORDER BY r.started_at DESC LIMIT ?`,
+    limit,
+  );
+  const screens = new Map<string, { scenario: string; status: string }[]>();
+  for (const screen of all<{ run_id: string; scenario: string; status: string }>(db, `SELECT run_id, scenario, status FROM device_screens WHERE run_id IN (SELECT run_id FROM device_runs ORDER BY started_at DESC LIMIT ?)`, limit)) {
+    screens.set(screen.run_id, [...(screens.get(screen.run_id) ?? []), screen]);
+  }
+  return rows.map((row) => ({
+    runId: row.run_id,
+    ...(row.label ? { label: row.label } : {}),
+    kind: row.kind,
+    version: row.version,
+    appVersion: row.app_version,
+    trigger: row.trigger,
+    startedAt: row.started_at,
+    finishedAt: row.finished_at,
+    categories: countCategories(screens.get(row.run_id) ?? []),
+  }));
+}
+
+export function readRun(runId: string, db: FarmDb = farmDb()): DeviceRun | null {
+  const row = get<RunRow>(db, "SELECT run_id, data FROM device_runs WHERE run_id = ?", runId);
+  return row ? parseRun(row) : null;
+}
+
+/** 실행의 그 화면 스크린샷(실패 묶음이 있을 때만). 결과 폴더 기준 */
+export function screenshotOf(runId: string, scenario: string, db: FarmDb = farmDb()): string | null {
+  return get<{ screenshot: string }>(db, "SELECT screenshot FROM device_screens WHERE run_id = ? AND scenario = ? AND screenshot IS NOT NULL LIMIT 1", runId, scenario)?.screenshot ?? null;
 }
 
 /** `startedAt`이 가장 늦은 실행 */
-export function readLatestRun(root = devicesRoot): DeviceRun | null {
-  const runs = readRuns(root).sort((left, right) => left.startedAt.localeCompare(right.startedAt));
-  return runs.at(-1) ?? null;
+export function readLatestRun(db: FarmDb = farmDb()): DeviceRun | null {
+  const row = get<RunRow>(db, "SELECT run_id, data FROM device_runs ORDER BY started_at DESC LIMIT 1");
+  return row ? parseRun(row) : null;
 }
 
 /** 재시작 복구. 끝나지 않은 실행의 진행 중 기기를 skipped로 닫고 finishedAt을 채운다. 닫은 게 있으면 true. */
-export function closeUnfinishedRun(root = devicesRoot, now: () => number = Date.now): boolean {
-  const unfinished = readRuns(root).filter((run) => run.finishedAt === null);
+export function closeUnfinishedRun(db: FarmDb = farmDb(), now: () => number = Date.now): boolean {
+  const unfinished = all<RunRow>(db, "SELECT run_id, data FROM device_runs WHERE finished_at IS NULL").map(parseRun);
   for (const run of unfinished) {
     for (const outcome of run.outcomes) {
       if (outcome.status !== "running") continue;
@@ -84,7 +149,7 @@ export function closeUnfinishedRun(root = devicesRoot, now: () => number = Date.
       outcome.message = restartMessage;
     }
     run.finishedAt = new Date(now()).toISOString();
-    writeRun(run, root);
+    writeRun(run, db);
   }
   return unfinished.length > 0;
 }
@@ -135,16 +200,27 @@ export async function writeFailureBundle(dir: string, input: FailureBundleInput,
   if (input.frames.length > 0) await deps.encodeVideo(input.frames, path.join(dir, "video.mp4"));
 }
 
-function runStartedAt(dir: string): number {
-  const run = readRun(path.join(dir, runFile));
-  const started = run ? Date.parse(run.startedAt) : Number.NaN;
-  return Number.isNaN(started) ? statSync(dir).mtimeMs : started;
+function runDirs(root: string): string[] {
+  if (!existsSync(root)) return [];
+  return readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name);
 }
 
-/** `retentionDays`보다 오래된 실행 디렉터리를 지운다. 지운 실행 수. */
-export function pruneRuns(root: string, now: number, days = retentionDays): number {
-  const cutoff = now - days * dayMs;
-  const expired = runDirs(root).filter((dir) => runStartedAt(dir) < cutoff);
-  for (const dir of expired) rmSync(dir, { recursive: true, force: true });
-  return expired.length;
+/**
+ * `retentionDays`보다 오래된 실행을 DB와 묶음 폴더에서 지운다. 지운 실행 수.
+ * DB에 없는 폴더(옛 기록·지운 행)는 폴더 수정 시각으로 본다.
+ */
+export function pruneRuns(root: string, now: number, days = retentionDays, db: FarmDb = farmDb()): number {
+  const cutoff = new Date(now - days * dayMs).toISOString();
+  const startedAt = new Map(all<{ run_id: string; started_at: string }>(db, "SELECT run_id, started_at FROM device_runs").map((row) => [row.run_id, row.started_at]));
+  const expired = new Set([...startedAt].filter(([, started]) => started < cutoff).map(([runId]) => runId));
+  for (const name of runDirs(root)) {
+    if (!startedAt.has(name) && statSync(path.join(root, name)).mtimeMs < now - days * dayMs) expired.add(name);
+  }
+  transaction(db, () => {
+    for (const runId of expired) sql(db, "DELETE FROM device_runs WHERE run_id = ?", runId);
+  });
+  for (const runId of expired) rmSync(path.join(root, runId), { recursive: true, force: true });
+  return expired.size;
 }

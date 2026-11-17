@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
+
+import { openFarmDb } from "../db/farm-db";
 
 import { ConfluenceError, fetchPolicySnapshot, hashBody, type ConfluenceConfig, type FetchLike } from "./confluence";
-import { readSnapshot, recordSnapshot } from "./store";
+import { readChanges, readSnapshot, recordSnapshot } from "./store";
 
 const config: ConfluenceConfig = { email: "a@b", token: "t", cloudId: "cloud", spaceKey: "SHOP", titleQuery: "통합 정책", siteUrl: "https://example.atlassian.net/wiki" };
 
@@ -48,18 +47,19 @@ assert.equal(new ConfluenceError(403, "x").status, 403);
 
 // 저장: 처음엔 전부 추가, 본문이 바뀐 것만 다음에 변경으로 기록
 {
-  const root = mkdtempSync(path.join(tmpdir(), "policy-"));
-  try {
-    const first = await fetchPolicySnapshot(config, [], fakeConfluence({ "1": "a", "2": "b" }).fetchImpl);
-    assert.deepEqual(recordSnapshot(first.snapshot, root).map((change) => change.kind), ["added", "added"]);
-    const second = await fetchPolicySnapshot(config, [], fakeConfluence({ "1": "a", "2": "b-수정" }).fetchImpl);
-    const changes = recordSnapshot(second.snapshot, root);
-    assert.deepEqual(changes.map((change) => `${change.kind}:${change.page.id}`), ["changed:2"]);
-    assert.equal(readSnapshot(root).pages["2"].hash, hashBody("b-수정"));
-    assert.equal(readFileSync(path.join(root, "changes.jsonl"), "utf8").trim().split("\n").length, 3);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  const db = openFarmDb(":memory:");
+  const first = await fetchPolicySnapshot(config, [], fakeConfluence({ "1": "a", "2": "b" }).fetchImpl);
+  assert.deepEqual(recordSnapshot(first.snapshot, db).map((change) => change.kind), ["added", "added"]);
+  assert.deepEqual(readSnapshot(db), first.snapshot);
+  const second = await fetchPolicySnapshot(config, [], fakeConfluence({ "1": "a", "2": "b-수정" }).fetchImpl);
+  const changes = recordSnapshot(second.snapshot, db);
+  assert.deepEqual(changes.map((change) => `${change.kind}:${change.page.id}`), ["changed:2"]);
+  assert.equal(readSnapshot(db).pages["2"].hash, hashBody("b-수정"));
+  const records = readChanges(10, db);
+  assert.equal(records.length, 3);
+  assert.deepEqual([records[0].kind, records[0].fromVersion], ["changed", 3]);
+  assert.equal(readChanges(1, db).length, 1);
+  db.close();
 }
 
 console.log("policy ok");

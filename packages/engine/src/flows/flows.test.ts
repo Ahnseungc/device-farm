@@ -93,6 +93,78 @@ assert.deepEqual(parseModelJson("```json\n[1]\n```"), [1]);
   assert.deepEqual(matches, [undefined, "prefix"]);
 }
 
+// 처음 한 번 뜨는 안내(혜택 튜토리얼): 탭을 누른 뒤 안내 화면이면 넘기고 플로우를 이어 간다.
+// 안내 버튼을 직접 누르는 플로우(안내 화면 점검)는 넘기지 않는다
+{
+  const checked = validate(good);
+  let path = "/home";
+  const clicked: string[] = [];
+  const driver = {
+    app: sampleApp,
+    goHome: async () => undefined,
+    currentPath: async () => path,
+    clickButton: async (name: string) => {
+      clicked.push(name);
+      if (name === "혜택") path = "/benefit/onboarding";
+      if (name === "시작하기") path = "/benefit";
+    },
+    expectText: async () => undefined,
+  } as unknown as ScreenDriver;
+  assert.equal((await runFlow(driver, checked, { now: () => 0, waitForScreen: async () => ({ ok: true }) })).status, "passed");
+  assert.deepEqual(clicked, ["혜택", "시작하기", "출석체크"]);
+
+  const intro = validate({ ...good, steps: [good.steps[0], { type: "click", target: { role: "button", name: "시작하기" } }, good.steps[2]] });
+  path = "/home";
+  clicked.length = 0;
+  await runFlow(driver, intro, { now: () => 0, waitForScreen: async () => ({ ok: true }) });
+  assert.deepEqual(clicked, ["혜택", "시작하기"]);
+}
+
+// 디자인 확인 스텝: 형식 검사, 그 자리에서 대조기를 부르고(스텝 번호와 함께) 플로우는 이어 간다. 대조기가 없으면 그냥 통과
+{
+  const checked = validate({ ...good, steps: [good.steps[0], { type: "design" }, good.steps[2]] });
+  assert.equal(checked.status, "generated");
+  assert.equal(stepTarget(checked.steps[1]), "지금 화면");
+  const driver = { app: sampleApp, goHome: async () => undefined, currentPath: async () => "/benefit", clickButton: async () => undefined, expectText: async () => undefined } as unknown as ScreenDriver;
+  const designed: number[] = [];
+  const result = await runFlow(driver, checked, { now: () => 0, waitForScreen: async () => ({ ok: true }), checkDesign: async (_driver, index) => void designed.push(index) });
+  assert.equal(result.status, "passed");
+  assert.deepEqual(designed, [2]);
+  assert.equal((await runFlow(driver, checked, { now: () => 0, waitForScreen: async () => ({ ok: true }) })).status, "passed");
+}
+
+// 입력 스텝: 형식 검사, 입력칸이 늦게 그려져도 다시 찾아 넣는다, 끝내 없으면 실패
+{
+  const fill = { type: "fill", label: "중량", value: "3.75" };
+  const checked = validate({ ...good, steps: [good.steps[0], fill, good.steps[2]] });
+  assert.equal(checked.status, "generated");
+  assert.deepEqual(checked.steps[1], fill);
+  assert.equal(stepTarget(checked.steps[1]), "중량: 3.75");
+  assert.equal(validate({ ...good, steps: [good.steps[0], { type: "fill", label: "", value: "1" }, good.steps[2]] }).reason, "입력칸 이름이 비어 있습니다.");
+
+  const scripts: string[] = [];
+  let tries = 0;
+  const driver = {
+    app: sampleApp,
+    goHome: async () => undefined,
+    currentPath: async () => "/benefit",
+    clickButton: async () => undefined,
+    expectText: async () => undefined,
+    evaluate: async (script: string) => {
+      scripts.push(script);
+      tries += 1;
+      return tries > 1;
+    },
+  } as unknown as ScreenDriver;
+  const passed = await runFlow(driver, checked, { now: () => 0, waitForScreen: async () => ({ ok: true }) });
+  assert.equal(passed.status, "passed");
+  assert.ok(scripts[0].includes('"중량"') && scripts[0].includes('"3.75"'));
+
+  const missing = { ...driver, evaluate: async () => false } as unknown as ScreenDriver;
+  const failed = await runFlow(missing, checked, { now: () => 0, waitMs: 0, waitForScreen: async () => ({ ok: true }) });
+  assert.match(failed.message ?? "", /3단계 입력 「중량: 3.75」 실패: 「중량」 입력칸을 찾지 못했습니다/);
+}
+
 // 저장소: PRD 목록, 생성 → 후보 → 확정, 같은 PRD는 다시 만들지 않는다
 const root = mkdtempSync(path.join(tmpdir(), "flows-"));
 try {
@@ -130,3 +202,14 @@ try {
 }
 
 console.log("flows ok");
+
+// 디자인 QA만 실행: 「디자인 확인」 스텝이 든 플로우만 고른다
+{
+  const { designFlowIds } = await import("@device-farm/core/flows/schema");
+  const flows = [
+    { id: "plain", steps: [{ type: "click", target: { role: "link", name: "혜택" } }] },
+    { id: "design", steps: [{ type: "click", target: { role: "link", name: "혜택" } }, { type: "design" }] },
+  ] as unknown as FlowDocument[];
+  assert.deepEqual(designFlowIds(flows), ["design"]);
+  assert.deepEqual(designFlowIds([]), []);
+}

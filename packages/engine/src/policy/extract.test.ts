@@ -4,14 +4,17 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import type { ScreenDriver } from "@device-farm/core/device/driver";
+import { compareCopyRules } from "@device-farm/core/policy/compare";
 import type { PolicySnapshot } from "@device-farm/core/policy/snapshot";
+
+import { openFarmDb } from "../db/farm-db";
 
 import type { AskClaude } from "./claude";
 import { hashBody, type ConfluenceConfig, type FetchLike } from "./confluence";
 import { refreshRules } from "./extract";
 import { figmaRefs, fetchFigmaTexts } from "./figma";
 import { readAllPageRules, readJudgeCache } from "./rules-store";
-import { checkPolicyScreen, policyScreens } from "./screen-check";
+import { checkPolicyScreen, policyScreens, withScreenAliases } from "./screen-check";
 import { sampleApp } from "@device-farm/core/config/sample-app";
 
 const config: ConfluenceConfig = { email: "a@b", token: "t", cloudId: "cloud", spaceKey: "SHOP", titleQuery: "통합 정책", siteUrl: "https://example.atlassian.net/wiki" };
@@ -34,6 +37,7 @@ const extraction = JSON.stringify({
 });
 
 const root = mkdtempSync(path.join(tmpdir(), "policy-rules-"));
+const db = openFarmDb(":memory:");
 try {
   let asked = 0;
   const ask: AskClaude = async (prompt) => {
@@ -42,12 +46,12 @@ try {
     assert.ok(prompt.includes("/my/withdraw"));
     return extraction;
   };
-  const deps = { config, ask, fetchImpl, knownScreens: ["/my/withdraw"], log: () => {}, root };
+  const deps = { config, ask, fetchImpl, knownScreens: ["/my/withdraw"], log: () => {}, db };
 
   // 처음엔 뽑고, 지어낸 규칙은 버린다. 피그마 링크도 남긴다
   const first = await refreshRules(snapshot, deps);
   assert.equal(first.extracted, 1);
-  const [rules] = readAllPageRules(root);
+  const [rules] = readAllPageRules(db);
   assert.equal(rules.rules.length, 2);
   assert.equal(rules.dropped.length, 1);
   assert.deepEqual(rules.figma, ["AbC123:12:34"]);
@@ -61,7 +65,11 @@ try {
   // (아래 화면 점검 뒤에 확인)
 
   // 화면 점검: 문구 통과 + 피그마 차이 + 판정은 한 번만 묻고 캐시
-  const [screen] = policyScreens(readAllPageRules(root), ["/my/withdraw"], { "AbC123:12:34": { hash: "f1", texts: ["출금하기", "출금 가능 금액"] } });
+  // 피그마 차이는 프론트 코드가 단 노드의 피그마 페이지 전체와 본다
+  const figmaCache = { "AbC123:12:34": { hash: "f1", texts: ["출금하기", "출금 가능 금액"] }, "page:AbC123:1:1": { hash: "p1", texts: ["출금하기", "출금 가능 금액", "포인트는 10,000원 이상부터"] } };
+  const front = { "/my/withdraw": ["AbC123:12:34"] };
+  const pageOf = { "AbC123:12:34": "AbC123:1:1" };
+  const [screen] = policyScreens(readAllPageRules(db), ["/my/withdraw"], figmaCache, front, pageOf);
   assert.equal(screen.path, "/my/withdraw");
   const driver = {
     app: sampleApp,
@@ -70,22 +78,45 @@ try {
     evaluate: async () => "포인트는 10,000원 이상부터\n출금할 수 있어요.\n출금하기",
     screenshot: async () => Buffer.from("png"),
   } as unknown as ScreenDriver;
-  const report = await checkPolicyScreen(driver, screen, { ask, ignores: [], root, settleMs: 0, now: () => Date.parse("2026-11-11T00:00:00.000Z") });
+  const report = await checkPolicyScreen(driver, screen, { ask, ignores: [], root, db, settleMs: 0, now: () => Date.parse("2026-11-11T00:00:00.000Z") });
   assert.equal(report.judgeError, undefined);
   assert.equal(report.checks.find((check) => check.id === behaviorId())?.ok, true);
   assert.ok(report.checks.some((check) => check.title === "피그마 문구 「출금할 수 있어요.」"));
-  assert.equal(Object.keys(readJudgeCache(root)).length, 1);
-  const again = await checkPolicyScreen(driver, screen, { ask, ignores: [], root, settleMs: 0 });
+  assert.equal(Object.keys(readJudgeCache(db)).length, 1);
+  const again = await checkPolicyScreen(driver, screen, { ask, ignores: [], root, db, settleMs: 0 });
   assert.equal(again.cached, true);
   assert.equal(asked, 2);
+  // 같은 페이지의 다른 프레임(시트·팝업)에 있는 문구는 차이가 아니다
+  const [withSheet] = policyScreens(readAllPageRules(db), ["/my/withdraw"], { ...figmaCache, "page:AbC123:1:1": { hash: "p2", texts: ["출금하기", "출금할 수 있어요."] } }, front, pageOf);
+  const sheetReport = await checkPolicyScreen(driver, withSheet, { ask, ignores: [], root, db, settleMs: 0 });
+  assert.ok(!sheetReport.checks.some((check) => check.id.startsWith("figma:")));
+  // 프론트 코드가 단 노드가 없으면(정책서 링크만) 피그마 차이는 보지 않는다
+  const [policyOnly] = policyScreens(readAllPageRules(db), ["/my/withdraw"], figmaCache);
+  assert.equal(policyOnly.figmaPage, null);
+
+  // 규칙 없이 프론트 코드만 피그마를 단 화면도 대조한다. 점검·지도에서 본 경로(knownPaths)만
+  {
+    const frontOnly = { ...front, "/price": ["AbC123:12:34"], "/shop/buy/success": ["AbC123:12:34"] };
+    const paths = policyScreens(readAllPageRules(db), ["/my/withdraw", "/price"], figmaCache, frontOnly, pageOf).map((item) => item.path);
+    assert.deepEqual(paths, ["/my/withdraw", "/price"]);
+  }
+
+  // 「디자인 확인」(stay): 다시 열지 않고 지금 화면을 본다
+  {
+    let navigated = 0;
+    const stayed = await checkPolicyScreen({ ...driver, navigate: async () => void (navigated += 1) } as ScreenDriver, screen, { ask, ignores: [], root, db, settleMs: 0, stay: true });
+    assert.equal(navigated, 0);
+    assert.ok(!stayed.checks.some((check) => check.id === "open"));
+  }
 
   // 다른 화면이 열려 있으면 비교하지 않는다
-  const wrong = await checkPolicyScreen({ ...driver, currentPath: async () => "/home" } as ScreenDriver, screen, { ask, ignores: [], root, settleMs: 0 });
+  const wrong = await checkPolicyScreen({ ...driver, currentPath: async () => "/home" } as ScreenDriver, screen, { ask, ignores: [], root, db, settleMs: 0 });
   assert.equal(wrong.checks[0].id, "open");
 
   await refreshRules({ ...snapshot, pages: {} }, deps);
-  assert.equal(readAllPageRules(root).length, 0);
+  assert.equal(readAllPageRules(db).length, 0);
 } finally {
+  db.close();
   rmSync(root, { recursive: true, force: true });
 }
 
@@ -100,3 +131,17 @@ const figmaFetch: FetchLike = async (url, init) => {
 assert.deepEqual((await fetchFigmaTexts("ft", ["K1:1:2"], figmaFetch))["K1:1:2"].texts, ["출금하기"]);
 
 console.log("policy extract ok");
+
+// 테스트 경로는 실제 화면의 규칙·피그마로 대조한다. 실제 화면에 규칙이 없거나 이미 있는 경로면 더하지 않는다
+{
+  const rule = { id: "r1", pageId: "p", pageTitle: "레벨 통합 정책", pageHash: "h", since: "2026-01-01T00:00:00.000Z", kind: "copy" as const, section: "", statement: "Lv5 골드바", expected: "0.1g 골드바 1개 선물", evidence: "0.1g 골드바 1개 선물", screens: ["/benefit/level-guide"], visibleOnOpen: true };
+  const real = { path: "/benefit/level-guide", rules: [rule], figma: { hash: "f", texts: ["0.1g 골드바 1개 선물"] } };
+  const aliased = withScreenAliases([real], { "/dev/farm-sample": "/benefit/level-guide", "/dev/none": "/nowhere" });
+  assert.deepEqual(aliased.map((screen) => screen.path), ["/benefit/level-guide", "/dev/farm-sample"]);
+  assert.equal(aliased[1].figma, real.figma);
+  // 테스트 경로에서도 문구 비교가 돈다: 정책·피그마에 있는 문구가 화면에 없으면 버그 후보
+  const checks = compareCopyRules(aliased[1].rules, { path: "/dev/farm-sample", text: "0.05g 골드바 1개 선물 지급", ignores: [], screenChanged: false, now: Date.parse("2026-11-12T00:00:00.000Z"), figmaTexts: aliased[1].figma?.texts });
+  assert.equal(checks[0]?.finding, "bug-candidate");
+  console.log("screen alias ok");
+}
+

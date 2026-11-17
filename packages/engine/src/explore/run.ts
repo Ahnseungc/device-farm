@@ -53,6 +53,8 @@ export interface ExploreDeps {
   replay?: typeof defaultReplay;
   probe?: Probe;
   log?: (message: string) => void;
+  /** 디바이스팜 「중지」. 도는 기기는 지금 경로를 마치고, 남은 기기는 건너뛴다 */
+  signal?: AbortSignal;
 }
 
 /** HTTP 상태로 옮길 수 있는 요청 오류(replayOne). */
@@ -191,6 +193,7 @@ async function crawlAndroid(session: Session, result: ExploreResult, publish: ()
       probe,
       formValues: deps.formValues,
       now: deps.now,
+      signal: deps.signal,
       runId: session.runId,
       deviceId: session.device.id,
       isExternal: async () => isExternal(await driver.evaluate<string>("location.href"), deps.webOrigin, deps.app.apiOrigin || undefined),
@@ -254,7 +257,7 @@ async function exploreDevice(context: RunContext, device: Device, androidPaths: 
   const result = newResult(context.runId, device, nowOf(deps));
   context.results.push(result);
   const publish = publisher(context, result);
-  const skip = skipReason(device, androidPaths);
+  const skip = deps.signal?.aborted ? stoppedMessage : skipReason(device, androidPaths);
   try {
     if (skip !== null) result.message = skip;
     else {
@@ -270,6 +273,8 @@ async function exploreDevice(context: RunContext, device: Device, androidPaths: 
     publish();
   }
 }
+
+export const stoppedMessage = "중지해서 건너뛰었어요.";
 
 /** Android를 먼저 가드를 켜고 탐색하고, iOS는 Android의 깨끗한 경로만 다시 돈다. */
 export async function runExplore(request: { deviceIds: readonly string[] | "all"; runId?: string }, deps: ExploreDeps): Promise<ExploreResult[]> {

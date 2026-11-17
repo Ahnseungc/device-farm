@@ -1,26 +1,34 @@
-import type { AppNavigation } from "../config/app-config";
+import { isTabName, type AppNavigation } from "../config/app-config";
 
 /**
  * 카오스 탐색의 행동 고르기(docs/design-chaos.md). 행동마다 점수를 매기고 점수에 비례해 하나를 뽑는다.
  * 무작위는 시드로 정해 같은 시드·같은 앱 상태면 같은 순서가 나온다. 판정·실행은 engine이 한다.
  */
 
-export type ChaosKind = "press" | "back" | "tab" | "doubleTap" | "backDuringLoad" | "background" | "restart" | "homeReset";
+export type ChaosKind = "press" | "fill" | "back" | "tab" | "doubleTap" | "backDuringLoad" | "background" | "otherApp" | "restart" | "homeReset";
 
-/** 종류별 기본 가중치 (작성자 판단, docs/design-chaos.md 표와 같다). 입력·네트워크 끊김은 아직 없다. */
+/**
+ * 종류별 기본 가중치 (작성자 판단). 네트워크 끊김은 아직 없다.
+ * 홈 리셋·재시작·백그라운드를 설계 문서 표의 절반 아래로 낮췄다. 19회 1,748스텝 중 535번이 뒤로·닫기·홈·재시작이라 홈에서 4단계 넘게 못 갔다(2026-11-16).
+ * 입력칸 채우기(fill)는 폼 다음 단계로 가는 유일한 길이라 누르기와 같게 둔다.
+ */
 export const baseWeights = {
   press: 1.0,
+  fill: 1.0,
   back: 0.3,
   tab: 0.2,
   doubleTap: 0.15,
   backDuringLoad: 0.15,
-  background: 0.1,
-  restart: 0.05,
-  homeReset: 0.05,
+  background: 0.05,
+  /** 다른 앱(설정)을 앞에 띄웠다가 돌아오기. 외부 앱 갔다 오면 흰 화면이 남는지 본다(2026-11-17 요청) */
+  otherApp: 0.05,
+  restart: 0.02,
+  homeReset: 0.02,
 } as const satisfies Record<ChaosKind, number>;
 
 /** 상황 배수 (작성자 판단) */
-export const multipliers = { newState: 2, nearError: 3, dead: 0.2 } as const;
+/** samePath: 눌러도 경로가 안 바뀐 누르기(차트 기간 일·월·1년 등). 45%의 스텝이 같은 화면에 머물렀다(2026-11-16) */
+export const multipliers = { newState: 2, nearError: 3, dead: 0.2, samePath: 0.3 } as const;
 /** 반응 없음이 이 횟수 이상이면 dead 배수를 곱한다 */
 export const deadAfter = 2;
 /**
@@ -50,6 +58,8 @@ export function isNoPressPath(path: string, pattern: RegExp = /password|\/pin(\/
 
 export interface ChaosAction {
   kind: ChaosKind;
+  /** fill의 넣을 값(name은 입력칸 이름) */
+  value?: string;
   /** 링크면 도착 경로(href) */
   to?: string;
   /** press·doubleTap의 대상. backDuringLoad·tab은 실행할 때 무작위로 고른다 */
@@ -65,6 +75,8 @@ export interface ActionStats {
   errors: number;
   /** 누르고 아무것도 안 바뀐 횟수 */
   dead: number;
+  /** 누르고 화면 내용은 바뀌었지만 경로는 그대로인 횟수 */
+  stayed?: number;
 }
 
 export interface ScoredAction {
@@ -83,12 +95,17 @@ export function isAvoidedName(name: string, pattern: RegExp): boolean {
 export interface ScreenChoices {
   path: string;
   /** 탭·뒤로 버튼·누르지 않는 경로를 아는 앱 설정 */
-  nav: Pick<AppNavigation, "tabPaths" | "inPageBackNames"> & { noPressPathPattern?: RegExp };
+  nav: Pick<AppNavigation, "tabPaths" | "inPageBackNames"> & Partial<Pick<AppNavigation, "homeTabName" | "homeTabLabels">> & { noPressPathPattern?: RegExp };
   /** 금지어·광고를 이미 뺀 누를 수 있는 요소. 링크는 도착 경로(to)를 안다 */
   targets: readonly { role: "button" | "link"; name: string; to?: string }[];
   /** 직전에 누른 요소(연타 대상) */
   lastPressed?: { role: "button" | "link"; name: string };
+  /** 값을 넣을 수 있는 입력칸. numeric이면 숫자칸 */
+  inputs?: readonly { name: string; numeric: boolean }[];
 }
+
+/** 봇이 입력칸에 넣는 테스트 값. 쓰기 요청은 가드가 막아 저장되지 않는다 */
+export const fillValues = { numeric: "1", text: "디바이스팜" } as const;
 
 /**
  * 탭 루트 화면에서 시스템 뒤로 키는 탭 이력을 바꾸거나 앱을 닫는다(홈에서 뒤로 → 다른 탭, 다음 회차 홈 이동 실패).
@@ -116,18 +133,21 @@ export interface ScoreContext {
  * 탭을 탭마다 후보로 두면 합이 1.0이 돼 네 스텝에 한 번꼴로 다른 탭으로 튀어 깊이가 리셋됐다.
  */
 export function chaosCandidates(screen: ScreenChoices): ChaosAction[] {
-  const tabNames = Object.keys(screen.nav.tabPaths);
-  const press = isNoPressPath(screen.path, screen.nav.noPressPathPattern) ? [] : screen.targets.filter((target) => !tabNames.includes(target.name));
-  const tabs = screen.targets.filter((target) => target.role === "link" && tabNames.includes(target.name));
+  const noPress = isNoPressPath(screen.path, screen.nav.noPressPathPattern);
+  const press = noPress ? [] : screen.targets.filter((target) => !isTabName(screen.nav, target.name));
+  const tabs = screen.targets.filter((target) => target.role === "link" && isTabName(screen.nav, target.name));
   const last = screen.lastPressed;
   const lastVisible = last && press.some((target) => target.role === last.role && target.name === last.name);
   return [
     ...press.map((target): ChaosAction => ({ kind: "press", ...target })),
+    ...(noPress ? [] : (screen.inputs ?? []).map((input): ChaosAction => ({ kind: "fill", name: input.name, value: input.numeric ? fillValues.numeric : fillValues.text }))),
     ...(canGoBack(screen) ? [{ kind: "back" } as ChaosAction] : []),
     ...(tabs.length > 0 ? [{ kind: "tab" } as ChaosAction] : []),
     ...(lastVisible ? [{ kind: "doubleTap", ...last } as ChaosAction] : []),
-    ...(press.length > 0 ? [{ kind: "backDuringLoad" } as ChaosAction] : []),
+    // 뒤로 버튼만 남은 화면에서 고르면 누를 대상이 없어 실패했다(2026-11-11 시드 11201)
+    ...(press.some((target) => !screen.nav.inPageBackNames.includes(target.name)) ? [{ kind: "backDuringLoad" } as ChaosAction] : []),
     { kind: "background" },
+    { kind: "otherApp" },
     { kind: "restart" },
     { kind: "homeReset" },
   ];
@@ -151,7 +171,8 @@ export function scoreAction(action: ChaosAction, stats: ActionStats | undefined,
     (base / (1 + stats.tries)) *
     (stats.openedNew ? multipliers.newState : 1) *
     (stats.errors > 0 ? multipliers.nearError : 1) *
-    (stats.dead >= deadAfter ? multipliers.dead : 1)
+    (stats.dead >= deadAfter ? multipliers.dead : 1) *
+    ((stats.stayed ?? 0) > 0 && !stats.openedNew ? multipliers.samePath : 1)
   );
 }
 
@@ -169,6 +190,30 @@ export function scoreAll(
   const scored = candidates.map((action) => ({ action, score: scoreAction(action, statsOf(statsKey(path, action)), context) }));
   const total = scored.reduce((sum, item) => sum + item.score, 0);
   return scored.map((item) => ({ ...item, probability: total > 0 ? item.score / total : 0 }));
+}
+
+/** 깊은 시작 화면 후보로 칠 최소 경로 단계(/a/b부터) (작성자 판단) */
+export const deepStartMinDepth = 2;
+
+/**
+ * 회차를 시작할 깊은 화면 후보: 지도·지난 봇 기록에서 본 경로 중 2단계 이상. 비밀번호 화면·다른 앱·읽기 실패·광고 주소는 뺀다.
+ * 홈에서만 출발하면 회차 30~50스텝 안에 4단계까지만 닿았다(2026-11-16).
+ */
+export function deepStartPool(paths: Iterable<string>, noPressPathPattern?: RegExp): string[] {
+  const pool = new Set<string>();
+  for (const raw of paths) {
+    const path = raw.split(/[?#]/)[0];
+    if (!path.startsWith("/") || /["<>%]/.test(path) || isNoPressPath(path, noPressPathPattern) || path.startsWith("/dev/")) continue;
+    if (pathDepth(path) >= deepStartMinDepth) pool.add(path);
+  }
+  return [...pool].sort();
+}
+
+/** 이번 실행에서 아직 안 간 후보 하나. 다 갔으면 아무거나, 후보가 없으면 undefined */
+export function pickStartPath(pool: readonly string[], visited: (path: string) => boolean, random: () => number): string | undefined {
+  const fresh = pool.filter((path) => !visited(path));
+  const from = fresh.length > 0 ? fresh : pool;
+  return from.length > 0 ? from[Math.floor(random() * from.length)] : undefined;
 }
 
 /** 시드 고정 난수(mulberry32). 0 이상 1 미만. */

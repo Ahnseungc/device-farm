@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { compareCopyRules, diffFigmaCopy, docsMismatchChecks, figmaChecks, hasBugCandidate, isIgnored, screenTextHash } from "./compare";
+import { compareCopyRules, diffFigmaCopy, docsMismatchChecks, figmaChecks, figmaCoverage, hasBugCandidate, isCheckableCopy, isIgnored, normalizeCopy, screenTextHash } from "./compare";
 import { judgeKey, parseVerdicts, verdictChecks } from "./judge";
 import { buildPageRules, classifyFinding, classifyWithFigma, parseExtraction, rejectReason, screenMatches, storageToText, type PolicyRule, type RuleCandidate } from "./rules";
 
@@ -58,13 +58,25 @@ const newRule: PolicyRule = second.rules.find((rule) => rule.kind === "value")!;
 const context = { path: "/my/withdraw", ignores: [], screenChanged: false, now };
 const passed = compareCopyRules([oldRule], { ...context, text: "포인트는 10,000원 이상부터\n출금할 수 있어요." });
 assert.equal(passed[0].ok, true);
-const missing = compareCopyRules([oldRule, newRule], { ...context, text: "출금하기" });
+const figmaTexts = ["포인트는 10,000원 이상부터 출금할 수 있어요."];
+const missing = compareCopyRules([oldRule, newRule], { ...context, text: "출금하기", figmaTexts });
 assert.equal(missing.find((check) => check.id === oldRule.id)?.finding, "bug-candidate");
-assert.equal(missing.find((check) => check.id === newRule.id)?.finding, "pending-app");
+// 「1,000원」처럼 숫자·단위뿐인 문구는 화면 어디에 있어도 맞아 글자로 확인하지 않는다
+assert.equal(missing.find((check) => check.id === newRule.id), undefined);
 assert.equal(hasBugCandidate(missing), true);
+// 피그마로 확인하지 못하면 버그 후보라고 단정하지 않는다
+assert.equal(compareCopyRules([oldRule], { ...context, text: "출금하기" })[0].finding, "unverified");
 // 무시는 그때의 정책 해시에 묶인다
 const ignores = [{ key: oldRule.id, hash: oldRule.pageHash, reason: "토스트 문구", at: "" }];
-assert.equal(hasBugCandidate(compareCopyRules([oldRule], { ...context, ignores, text: "출금하기" })), false);
+assert.equal(hasBugCandidate(compareCopyRules([oldRule], { ...context, ignores, text: "출금하기", figmaTexts })), false);
+// 표기만 다른 것은 같게 본다: 숫자 뒤 이상·이하, 물결표, 문장부호, 공백
+assert.equal(normalizeCopy("0g 이상 ~ 0.1g 미만"), normalizeCopy("0g ~ 0.1g 미만"));
+assert.equal(normalizeCopy("「광고 보고 포인트 받기」"), normalizeCopy("광고 보고 포인트 받기"));
+assert.notEqual(normalizeCopy("24시간 이내"), normalizeCopy("48시간 이내"));
+assert.equal(isCheckableCopy("5회"), false);
+assert.equal(isCheckableCopy("0.00001g"), false);
+assert.equal(isCheckableCopy("모은 포인트 0.5g"), true);
+assert.equal(isCheckableCopy("공유하기"), true);
 assert.equal(isIgnored(ignores, oldRule.id, "다른 해시"), false);
 // 상황 문구는 열자마자 확인하지 않는다
 assert.equal(compareCopyRules([{ ...oldRule, visibleOnOpen: false }], { ...context, text: "" }).length, 0);
@@ -97,8 +109,15 @@ assert.equal(verdicts[0].figma, "unknown");
 // 피그마가 앱과 같으면 정책 문서가 뒤처짐
 assert.equal(verdictChecks([behavior], [{ ...verdicts[0], figma: "app" }], { ignores: [], screenChanged: false, now })[0].finding, "policy-outdated");
 assert.equal(verdicts.length, 1);
-assert.equal(verdictChecks([behavior], verdicts, { ignores: [], screenChanged: false, now })[0].finding, "bug-candidate");
+// 피그마로 알 수 없으면 확인 필요, 피그마가 정책 편이면 버그 후보
+assert.equal(verdictChecks([behavior], verdicts, { ignores: [], screenChanged: false, now })[0].finding, "unverified");
+assert.equal(verdictChecks([behavior], [{ ...verdicts[0], figma: "policy" }], { ignores: [], screenChanged: false, now })[0].finding, "bug-candidate");
 assert.equal(verdictChecks([behavior], [{ ruleId: "b1", result: "unknown", reason: "" }], { ignores: [], screenChanged: false, now })[0].ok, true);
 assert.notEqual(judgeKey("/a", "s1", [behavior], ""), judgeKey("/a", "s2", [behavior], ""));
 
 console.log("policy rules ok");
+
+// 화면 고정 문구 중 피그마에 있는 비율 — 다른 화면 디자인이면 낮다
+assert.equal(figmaCoverage(["출금하기", "보유 포인트"], "출금하기\n보유 포인트\n3,000원"), 1);
+assert.equal(figmaCoverage(["스플래시", "한가위 혜택 시작"], "적립/사용\n포인트\n출금하기"), 0);
+assert.equal(figmaCoverage(["스플래시"], "3,000원"), 1);

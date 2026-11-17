@@ -56,7 +56,7 @@ export function isRecentlyChanged(page: Pick<PolicyPage, "modifiedAt">, now: num
   return Number.isFinite(modified) && now - modified < recentPolicyDays * dayMs;
 }
 
-/** 바뀜 기록 한 줄(`changes.jsonl`) */
+/** 바뀜 기록 한 줄(farm.db `policy_changes`) */
 export interface PolicyChangeRecord {
   at: string;
   kind: PolicyChangeKind;

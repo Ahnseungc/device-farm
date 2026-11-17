@@ -6,8 +6,17 @@ const prdPattern = /^[A-Za-z0-9._()[\]/-]+\.md$/;
 /** match가 prefix면 name으로 시작하는 버튼을 누른다. 레벨·금액처럼 계정 상태에 따라 바뀌는 이름에 쓴다. */
 export type ClickTarget = { role: "button" | "link"; name: string; match?: "prefix" };
 
-/** `home`은 점검기가 맨 앞에 넣는 시작 스텝이고, 플로우 중간에도 쓸 수 있다(홈으로 돌아가기). */
-export type FlowStep = { type: "home" } | { type: "click"; target: ClickTarget } | { type: "expectText"; text: string };
+/**
+ * `home`은 점검기가 맨 앞에 넣는 시작 스텝이고, 플로우 중간에도 쓸 수 있다(홈으로 돌아가기).
+ * `fill`은 aria-label(없으면 placeholder)이 label인 입력칸에 value를 넣는다(예: 「중량」).
+ * `design`은 지금 화면을 피그마·정책과 대조하고 화면 깨짐을 잰다. 어긋나도 플로우는 이어 간다(2026-11-17).
+ */
+export type FlowStep =
+  | { type: "home" }
+  | { type: "click"; target: ClickTarget }
+  | { type: "fill"; label: string; value: string }
+  | { type: "design" }
+  | { type: "expectText"; text: string };
 
 export type FlowProposal = "keep" | "update" | "create" | "delete";
 
@@ -25,12 +34,19 @@ export type FlowDocument = {
 };
 
 /** 화면·진행 패널·실패 메시지가 같이 쓰는 스텝 이름. 브라우저에서도 읽으므로 이 파일은 node 모듈을 쓰지 않는다. */
-export const stepLabels = { home: "홈에서 시작", click: "누르기", expectText: "문구 확인" } as const satisfies Record<FlowStep["type"], string>;
+export const stepLabels = { home: "홈에서 시작", click: "누르기", fill: "입력", design: "디자인 확인", expectText: "문구 확인" } as const satisfies Record<FlowStep["type"], string>;
+
+/** 「디자인 확인」 스텝이 든 플로우들의 id. 디자인 QA만 따로 돌릴 때 쓴다 */
+export function designFlowIds(flows: readonly { id: string; steps: readonly FlowStep[] }[]): string[] {
+  return flows.filter((flow) => flow.steps.some((step) => step.type === "design")).map((flow) => flow.id);
+}
 
 /** 스텝이 가리키는 이름. 홈 스텝은 홈 탭 이름 */
 export function stepTarget(step: FlowStep, homeTabName = "홈"): string {
   if (step.type === "home") return homeTabName;
   if (step.type === "click") return step.target.match === "prefix" ? `${step.target.name}…` : step.target.name;
+  if (step.type === "fill") return `${step.label}: ${step.value}`;
+  if (step.type === "design") return "지금 화면";
   return step.text;
 }
 
@@ -44,9 +60,10 @@ function failed(id: string, name: string, prd: string, requirement: string, reas
 
 function stepOf(raw: unknown, forbiddenClickNames: readonly string[]): FlowStep | string {
   if (!raw || typeof raw !== "object") return "스텝 형식이 올바르지 않습니다.";
-  const step = raw as { type?: unknown; path?: unknown; text?: unknown; target?: { role?: unknown; name?: unknown; match?: unknown } };
+  const step = raw as { type?: unknown; path?: unknown; text?: unknown; label?: unknown; value?: unknown; target?: { role?: unknown; name?: unknown; match?: unknown } };
   // 플로우 중간에 홈 탭으로 돌아간다. 닫기 뒤 돌아가는 화면이 매번 다를 때 쓴다.
   if (step.type === "home") return { type: "home" };
+  if (step.type === "design") return { type: "design" };
   if (step.type === "navigate") return "플로우는 홈에서 버튼·링크로만 이동합니다. navigate는 쓸 수 없습니다.";
   if (step.type === "click") {
     const role = step.target?.role;
@@ -58,6 +75,11 @@ function stepOf(raw: unknown, forbiddenClickNames: readonly string[]): FlowStep 
     }
     if (step.target.match !== undefined && step.target.match !== "prefix") return "match는 prefix만 쓸 수 있습니다.";
     return { type: "click", target: { role, name: step.target.name, ...(step.target.match === "prefix" ? { match: "prefix" as const } : {}) } };
+  }
+  if (step.type === "fill") {
+    if (typeof step.label !== "string" || !step.label) return "입력칸 이름이 비어 있습니다.";
+    if (typeof step.value !== "string") return "입력할 값이 올바르지 않습니다.";
+    return { type: "fill", label: step.label, value: step.value };
   }
   if (step.type === "expectText") {
     if (typeof step.text !== "string" || !step.text) return "기대 문구가 비어 있습니다.";

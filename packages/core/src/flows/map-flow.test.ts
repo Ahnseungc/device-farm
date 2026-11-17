@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 
 import type { MapEdge } from "../device/screen-map";
 import { sampleApp } from "../config/sample-app";
-import { blocksAt as blocksWith, mapFlowError as errorWith, mapRulesOf, replay as replayWith } from "./map-flow";
+import { blocksAt as blocksWith, hasChangingValue, mapFlowError as errorWith, mapRulesOf, replay as replayWith } from "./map-flow";
 import type { FlowStep } from "./schema";
 
 const edges: MapEdge[] = [
@@ -34,10 +34,36 @@ const expect = (text: string): FlowStep => ({ type: "expectText", text });
   assert.equal(typeof end === "string" ? end : end.path, "/benefit/history");
 }
 
-// 팝업은 같은 화면에 남아 다음 버튼을 누를 수 있다. 홈 블록은 처음으로 돌아간다
+// 팝업 뒤에는 문구 확인과 홈으로만. 홈 블록은 처음으로 돌아간다
 {
-  const steps = [click("혜택", "link"), click("OX퀴즈"), expect("4초"), click("적립 내역 보기"), { type: "home" } as FlowStep, click("혜택", "link"), click("OX퀴즈"), expect("4초")];
+  const steps = [click("혜택", "link"), click("OX퀴즈"), expect("4초"), { type: "home" } as FlowStep, click("혜택", "link"), click("적립 내역 보기"), expect("적립 내역")];
   assert.equal(mapFlowError(edges, steps), null);
+  const popup = replay(edges, [click("혜택", "link"), click("OX퀴즈")]);
+  assert.equal(typeof popup === "string" ? popup : popup.popup, true);
+  assert.match(mapFlowError(edges, [click("혜택", "link"), click("OX퀴즈"), click("적립 내역 보기"), expect("적립 내역")]) ?? "", /3번째 블록: 팝업이 떠 있어/);
+}
+
+// 입력은 지금 화면에 남는다: 누르기, 입력, 문구 확인
+{
+  const fill: FlowStep = { type: "fill", label: "수량", value: "3" };
+  const steps = [click("혜택", "link"), click("적립 내역 보기"), fill, expect("적립 내역")];
+  assert.equal(mapFlowError(edges, steps), null);
+  const end = replay(edges, steps);
+  assert.equal(typeof end === "string" ? end : end.path, "/benefit/history");
+}
+
+// 날마다 바뀌는 값이 든 버튼·문구는 후보에서 뺀다
+{
+  const priced: MapEdge[] = [
+    { from: "/my", role: "button", name: "포인트 1.5% 278,358원", kind: "popup", texts: ["보유 포인트"], seenAt: "" },
+    { from: "/my", role: "button", name: "배송지 등록하기", kind: "navigate", to: "/my/address", texts: ["배송지 정보를 입력해 주세요", "적립금 128,000원"], seenAt: "" },
+  ];
+  const blocks = blocksAt(priced, "/my").slice(4);
+  assert.deepEqual(blocks.map((block) => block.step.target.name), ["배송지 등록하기"]);
+  assert.deepEqual(blocks[0].texts, ["배송지 정보를 입력해 주세요"]);
+  assert.equal(hasChangingValue("1:1 문의"), false);
+  assert.equal(hasChangingValue("OX퀴즈"), false);
+  assert.equal(hasChangingValue("3.75g"), true);
 }
 
 // 실패: 지금 화면에 없는 버튼 / 앞 블록 뒤에 안 보인 문구 / 문구 확인 없음 / 누르기 없음

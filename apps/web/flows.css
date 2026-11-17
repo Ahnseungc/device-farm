@@ -1,10 +1,48 @@
-/* 플로우 화면. 카드·툴바는 baselines.css를 같이 쓴다. SEED 토큰만 쓴다. */
-.flows-header {
+/* 「플로우」 목록. SEED 토큰만 쓴다. 토스식: 큰 제목 · 한 줄씩 넉넉한 목록 · 주 버튼 하나 */
+.flows-page {
+  min-width: 0;
+  max-width: 920px;
+}
+
+.flows-page h1 {
+  margin: 0;
+}
+
+.flows-list {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  background: var(--seed-color-bg-layer-default);
+  border: 1px solid var(--seed-color-stroke-neutral-muted);
+  border-radius: var(--seed-radius-r4);
+  overflow: hidden;
+}
+
+.flows-row {
+  display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--seed-dimension-x3);
+  gap: var(--seed-dimension-x4);
+  padding: var(--seed-dimension-x4) var(--seed-dimension-x5);
+  border-bottom: 1px solid var(--seed-color-stroke-neutral-muted);
+}
+
+.flows-list > :last-child .flows-row,
+.flows-review > .flows-row:last-child {
+  border-bottom: none;
+}
+
+.flows-row-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.flows-row-steps {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flows-search {
+  max-width: 360px;
 }
 
 .flows-prd {
@@ -12,19 +50,52 @@
   min-width: 0;
 }
 
-.flows-card {
+/* 검토할 후보: 눈에 띄게 노란 바탕 */
+.flows-review {
   display: flex;
   flex-direction: column;
   gap: var(--seed-dimension-x2);
-  padding: var(--seed-dimension-x4);
-  border: 1px solid var(--seed-color-stroke-neutral-muted);
-  border-radius: var(--seed-radius-r3);
+  padding: var(--seed-dimension-x5);
+  background: var(--seed-color-bg-warning-weak);
+  border-radius: var(--seed-radius-r4);
 }
 
-.flows-steps {
-  margin: 0;
-  padding-left: var(--seed-dimension-x5);
+.flows-review .flows-row {
+  padding: var(--seed-dimension-x3) 0;
+  border-bottom-color: color-mix(in srgb, var(--seed-color-stroke-neutral-muted) 60%, transparent);
+}
+
+/* 저장 직후 한 번: 만들었어요 */
+.flows-created {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--seed-dimension-x3);
+  padding: var(--seed-dimension-x5);
+  background: var(--seed-color-bg-positive-weak);
+  border-radius: var(--seed-radius-r4);
+}
+
+.flows-empty {
   display: flex;
   flex-direction: column;
-  gap: var(--seed-dimension-x1);
+  align-items: center;
+  gap: var(--seed-dimension-x3);
+  padding: var(--seed-dimension-x10) var(--seed-dimension-x5);
+  background: var(--seed-color-bg-layer-default);
+  border: 1px solid var(--seed-color-stroke-neutral-muted);
+  border-radius: var(--seed-radius-r4);
+  text-align: center;
+}
+
+.flows-more summary {
+  cursor: pointer;
+  color: var(--seed-color-fg-neutral-muted);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.flows-more-body {
+  margin-top: var(--seed-dimension-x4);
 }

@@ -2,6 +2,26 @@
 
 `@ahnseungchan/device-farm`의 바뀐 점을 적는다.
 
+## [Unreleased]
+
+### Added
+
+- 실행 기록·정책 스냅샷·화면 지도를 SQLite(`farm.db`, `node:sqlite`)에 쌓는다. 옛 JSON 기록은 `db-import`로 옮긴다
+- 화면 깨짐 점검(`layout-check`): 넘침·잘림·겹침·하단 잘림·빈 화면. 봇 점검은 처음 본 화면마다 잰다
+- 디자인 점검 탭: 화면별 피그마 일치율, 30% 미만은 「피그마 확인 필요」로 따로 센다. 플로우 「디자인 확인」 스텝·입력 스텝
+- 봇 점검: 깊은 화면에서 시작, 입력칸 채우기, 다른 앱 다녀온 뒤 빈 화면 확인, 원인별 묶음과 Claude 한 줄 원인 요약
+- 진행 중 플로팅에 모든 점검을 띄우고 점검마다 중지(`POST /jobs/stop`). 오늘 요약·문제 화면
+- 슬랙(env로 켬, `SLACK_BOT_TOKEN`): 실패·버그 후보 즉시 알림, 정책 불일치 버튼 처리, 점검 끝 한 줄 요약, 풀어 쓴 오류 문구, 수정 PR 버튼(`FARM_FIX_PR_GITHUB_TOKEN`·`FARM_FIX_PR_REPO`)
+- 야간 점검(`FARM_NIGHTLY=1`, 03:00 플로우·03:30 봇)과 아침 Claude 요약(`FARM_DAILY_REPORT=1`, `daily-report`)
+- 팀 비밀번호 로그인 + HTTPS 사내망 모드(`FARM_PASSWORD_HASH`·`FARM_TLS_CERT`·`FARM_TLS_KEY`·`FARM_PUBLIC_ORIGIN`, `farm-password`)
+- 앱 설정: `homeTabLabels`(홈 탭 글자 후보), `introScreens`(넘길 안내 화면), `webview.overlayCloseScript`(위에 뜬 상담창 등 닫기)
+
+### Changed
+
+- Node 22.13 이상(`node:sqlite`)
+- Android 누르기: 위치가 멈출 때까지 기다리고 가려진 요소는 누르지 않는다. 앱이 꺼져 있으면 먼저 띄운다
+- 실시간 화면: 끊기면 5번까지 다시 붙고 첫 화면을 바로 보낸다
+
 ## [0.1.3] - 2026-11-11
 
 ### Added

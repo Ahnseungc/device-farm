@@ -8,6 +8,7 @@ import { api, errorMessage, type DeviceWithState } from "./api-client";
 import { StateChip } from "./devices-screen";
 import { t } from "./i18n";
 import { LiveView } from "./live-view";
+import { MetaLine } from "./meta-line";
 import { ActionButton } from "./seed-design/ui/action-button";
 import { Callout } from "./seed-design/ui/callout";
 import { TextField, TextFieldInput } from "./seed-design/ui/text-field";
@@ -104,7 +105,7 @@ export function DeviceDetail({ device, onClose }: DeviceDetailProps) {
           {t("목록으로", "Back to list")}
         </ActionButton>
         <Text as="h2" textStyle="t6Bold" color="fg.neutral">
-          {device.model} · {isIos ? "iOS" : "Android"} {device.osVersion}
+          <MetaLine items={[device.model, `${isIos ? "iOS" : "Android"} ${device.osVersion}`]} />
         </Text>
         <StateChip state={device.state} />
       </div>

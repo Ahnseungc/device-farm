@@ -1,11 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
 
 import type { ButtonResult } from "@device-farm/core/device/button-check";
 import { edgesFrom } from "@device-farm/core/device/screen-map";
 
+import { openFarmDb } from "./db/farm-db";
 import { readScreenMap, recordScreenMap } from "./screen-map-store";
 
 const results: ButtonResult[] = [
@@ -31,14 +29,14 @@ const results: ButtonResult[] = [
   assert.equal(edges[3].message, "POST /x 500");
 }
 
-// 파일에 합칠 때 같은 화면·버튼은 새 결과로 바꾸고, 다른 화면 간선은 남긴다.
+// 지도에 합칠 때 같은 화면·버튼은 새 결과로 바꾸고, 다른 화면 간선은 남긴다.
 {
-  const file = path.join(mkdtempSync(path.join(tmpdir(), "screen-map-")), "screen-map.json");
-  assert.deepEqual(readScreenMap(file), { edges: [] });
-  recordScreenMap("/benefit", results, file, new Date("2026-10-29T00:00:00Z"));
-  recordScreenMap("/home", [{ role: "link", name: "포인트 내역 보기", status: "reacted", to: "/point" }], file);
-  recordScreenMap("/benefit", [{ role: "button", name: "장식", status: "reacted", message: "화면 내용 바뀜" }], file);
-  const edges = readScreenMap(file).edges;
+  const db = openFarmDb(":memory:");
+  assert.deepEqual(readScreenMap(db), { edges: [] });
+  recordScreenMap("/benefit", results, db, new Date("2026-10-29T00:00:00Z"));
+  recordScreenMap("/home", [{ role: "link", name: "포인트 내역 보기", status: "reacted", to: "/point" }], db);
+  recordScreenMap("/benefit", [{ role: "button", name: "장식", status: "reacted", message: "화면 내용 바뀜" }], db);
+  const edges = readScreenMap(db).edges;
   assert.equal(edges.length, 5);
   assert.equal(edges.find((edge) => edge.name === "장식")?.kind, "popup");
   assert.equal(edges.find((edge) => edge.from === "/home")?.to, "/point");

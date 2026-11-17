@@ -6,6 +6,7 @@ import type { QaCheck } from "@device-farm/core/qa/rules";
 
 import { errorMessage, fetchLogs, joinPath, resultFileUrl } from "./api-client";
 import { dateLocale, plural, t } from "./i18n";
+import { MetaLine } from "./meta-line";
 import type { FailedCell } from "./results-screen";
 import { Badge } from "./seed-design/ui/badge";
 import { Callout } from "./seed-design/ui/callout";
@@ -48,7 +49,7 @@ export function FailureDetail({ cell, onClose }: FailureDetailProps) {
   return (
     <DialogRoot open size="large" onOpenChange={(open) => !open && onClose()}>
       <DialogContent
-        title={`${screen.scenario} · ${outcome.device.model} ${outcome.device.osVersion}`}
+        title={`${screen.scenario} (${outcome.device.model} ${outcome.device.osVersion})`}
         description={t("실패 상세", "Failure details")}
       >
         <DialogBody>
@@ -99,7 +100,7 @@ function QaCheckList({ checks }: { checks: QaCheck[] }) {
   return (
     <VStack gap="x2" align="stretch">
       <Text as="h3" textStyle="t4Bold">
-        {t(`규칙 ${checks.length}개 · 실패 ${checks.filter((check) => !check.ok).length}개`, `${plural(checks.length, "rule")} · ${checks.filter((check) => !check.ok).length} failed`)}
+        <MetaLine items={[t(`규칙 ${checks.length}개`, plural(checks.length, "rule")), t(`실패 ${checks.filter((check) => !check.ok).length}개`, `${checks.filter((check) => !check.ok).length} failed`)]} />
       </Text>
       <ul className="failure-checks">
         {sorted.map((check) => (

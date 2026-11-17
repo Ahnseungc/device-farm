@@ -1,15 +1,18 @@
 import { useState, type FormEvent } from "react";
-import { Text, VStack } from "@seed-design/react";
+import { HStack, Text, VStack } from "@seed-design/react";
 
 import type { BuildKind, DeviceRun, DeviceState } from "@device-farm/core/device/types";
 
+import { FloatingNotice, type Notice } from "./floating-notice";
+import { LoadingState } from "./loading-state";
 import { api, errorMessage, usePoll, type DeviceWithState } from "./api-client";
-import { t } from "./i18n";
+import { plural, t } from "./i18n";
 import { LiveView } from "./live-view";
 import { ActionButton } from "./seed-design/ui/action-button";
 import { Badge, type BadgeProps } from "./seed-design/ui/badge";
 import { Callout } from "./seed-design/ui/callout";
 import { Checkbox, CheckboxGroup } from "./seed-design/ui/checkbox";
+import { DialogContent, DialogRoot } from "./seed-design/ui/dialog";
 import { ResultSection } from "./seed-design/ui/result-section";
 import { SegmentedControl, SegmentedControlItem } from "./seed-design/ui/segmented-control";
 import { TextField, TextFieldInput } from "./seed-design/ui/text-field";
@@ -56,28 +59,63 @@ interface DevicesScreenProps {
 export function DevicesScreen({ onOpen }: DevicesScreenProps) {
   const devices = usePoll(api.devices);
   const latest = usePoll(api.latestRun);
-  const list = devices.data ?? [];
+  const [runOpen, setRunOpen] = useState(false);
+  const [notice, setNotice] = useState<Notice | null>(null);
+  if (devices.data === undefined) return devices.error ? <Callout tone="critical" description={devices.error} /> : <LoadingState />;
+  const list = devices.data;
+  const busy = list.filter((device) => device.state === "checking").length;
 
   return (
     <VStack className="devices-page" gap="x5">
-      <RunForm devices={list} onStarted={() => void latest.reload()} />
+      <FloatingNotice notice={notice} onClose={() => setNotice(null)} />
+      <HStack justify="space-between" align="flex-end" gap="x3" wrap="wrap">
+        <VStack gap="x1">
+          <Text as="h1" textStyle="t7Bold">
+            {t(`기기 ${list.length}대`, plural(list.length, "device"))}
+          </Text>
+          <Text textStyle="t4Regular" color="fg.neutralMuted">
+            {list.length === 0
+              ? t("USB로 기기를 연결하면 바로 나타나요.", "Connect a device over USB and it shows up right away.")
+              : busy > 0
+                ? t(`${busy}대가 점검 중이에요. 기기를 누르면 크게 보고 직접 조작할 수 있어요.`, `${busy} checking. Click a device to view it large and control it.`)
+                : t("기기를 누르면 크게 보고 직접 조작할 수 있어요.", "Click a device to view it large and control it.")}
+          </Text>
+        </VStack>
+        <ActionButton variant="brandSolid" size="medium" disabled={list.length === 0} onClick={() => setRunOpen(true)}>
+          {t("새 빌드 점검", "Check a new build")}
+        </ActionButton>
+      </HStack>
       {devices.error ? <Callout tone="critical" description={devices.error} /> : null}
-      {devices.data && list.length === 0 ? (
+      {list.length === 0 ? (
         <div className="devices-card">
           <ResultSection
             size="medium"
             title={t("연결된 기기가 없어요", "No devices connected")}
-            description={t("USB로 기기를 연결하면\n여기에 바로 나타나요.", "Connect a device over USB\nand it shows up here.")}
+            description={t("USB로 기기를 연결하고 USB 디버깅을 허용하면\n여기에 바로 나타나요.", "Connect a device over USB and allow USB debugging\nand it shows up here.")}
           />
         </div>
-      ) : null}
-      {list.length > 0 ? (
+      ) : (
         <div className="devices-grid">
           {list.map((device) => (
             <DeviceCard key={device.id} device={device} step={currentStep(latest.data, device.id)} onOpen={onOpen} />
           ))}
         </div>
-      ) : null}
+      )}
+      <DialogRoot open={runOpen} onOpenChange={(open) => !open && setRunOpen(false)}>
+        <DialogContent
+          title={t("새 빌드 점검", "Check a new build")}
+          description={t("빌드를 설치하고 화면·플로우·데이터·정책 점검을 전부 돌려요.", "Installs the build and runs every screen, flow, data and policy check.")}
+        >
+          <RunForm
+            devices={list}
+            onStarted={(text) => {
+              setRunOpen(false);
+              setNotice({ text, error: false });
+              void latest.reload();
+            }}
+          />
+        </DialogContent>
+      </DialogRoot>
     </VStack>
   );
 }
@@ -90,7 +128,7 @@ interface DeviceCardProps {
 
 function DeviceCard({ device, step, onOpen }: DeviceCardProps) {
   return (
-    <article className="devices-card devices-device" aria-label={device.model}>
+    <button type="button" className="devices-card devices-device" aria-label={t(`${device.model} 크게 보기`, `Open ${device.model}`)} onClick={() => onOpen(device.id)}>
       <div className="devices-thumb">
         {device.state === "offline" ? (
           <div className="devices-media-empty">
@@ -112,34 +150,31 @@ function DeviceCard({ device, step, onOpen }: DeviceCardProps) {
             {device.platform === "ios" ? "iOS" : "Android"} {device.osVersion}
           </Text>
           <Text as="p" textStyle="t3Regular" color="fg.neutralSubtle">
-            {t("설치 버전", "Installed")} {device.appVersion ?? t("없음", "none")}
+            {t("앱", "App")} {device.appVersion ?? t("없음", "none")}
           </Text>
         </VStack>
-        {step ? (
-          <Text as="p" textStyle="t3Medium" color="fg.informative">
-            {step}
-          </Text>
-        ) : null}
-        <div className="devices-card-action">
-          <ActionButton variant="neutralWeak" size="small" onClick={() => onOpen(device.id)}>
-            {t("크게 보기", "Open")}
-          </ActionButton>
-        </div>
+        {/* 진행 줄은 비어 있어도 자리를 둔다 — 점검이 시작·끝날 때 카드가 들썩이지 않게 */}
+        <Text as="p" textStyle="t3Medium" color="fg.informative" className="devices-card-step" aria-hidden={step ? undefined : true}>
+          {step ?? " "}
+        </Text>
+        <Text textStyle="t3Medium" color="fg.neutralMuted" className="devices-card-more">
+          {t("크게 보기", "Open")}
+        </Text>
       </VStack>
-    </article>
+    </button>
   );
 }
 
 interface RunFormProps {
   devices: DeviceWithState[];
-  onStarted: () => void;
+  onStarted: (text: string) => void;
 }
 
 function RunForm({ devices, onStarted }: RunFormProps) {
   const [kind, setKind] = useState<BuildKind>("dev");
   const [version, setVersion] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
-  const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [buttonCheck, setButtonCheck] = useState(false);
 
@@ -149,7 +184,7 @@ function RunForm({ devices, onStarted }: RunFormProps) {
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!version.trim()) {
-      setMessage({ text: t("버전을 입력해 주세요.", "Enter a version."), error: true });
+      setError(t("설치할 버전을 적어 주세요.", "Enter the version to install."));
       return;
     }
     setPending(true);
@@ -160,20 +195,21 @@ function RunForm({ devices, onStarted }: RunFormProps) {
         devices: selected.length > 0 ? selected : "all",
         buttonCheck,
       });
-      setMessage({ text: `${t("점검을 시작했습니다.", "Check started.")} (${runId})`, error: false });
-      onStarted();
-    } catch (error) {
-      setMessage({ text: errorMessage(error), error: true });
+      onStarted(
+        t(
+          `${kind} ${version.trim()} 점검을 시작했어요. 오른쪽에서 진행을 볼 수 있어요. (${runId})`,
+          `Started checking ${kind} ${version.trim()}. Progress shows on the right. (${runId})`,
+        ),
+      );
+    } catch (caught) {
+      setError(errorMessage(caught));
     } finally {
       setPending(false);
     }
   }
 
   return (
-    <form className="devices-card devices-form" onSubmit={(event) => void submit(event)} aria-label={t("점검 실행", "Run check")}>
-      <Text as="h2" textStyle="t6Bold" color="fg.neutral">
-        {t("점검 실행", "Run check")}
-      </Text>
+    <form className="devices-form" onSubmit={(event) => void submit(event)} aria-label={t("새 빌드 점검", "Check a new build")}>
       <div className="devices-form-row">
         <VStack gap="x2">
           <Text id="devices-build-label" textStyle="t5Medium" color="fg.neutral">
@@ -193,7 +229,7 @@ function RunForm({ devices, onStarted }: RunFormProps) {
         </VStack>
         <div className="devices-version">
           <TextField label={t("버전", "Version")} value={version} onValueChange={({ value }) => setVersion(value)}>
-            <TextFieldInput placeholder="1.8.0" />
+            <TextFieldInput placeholder="1.8.0" autoFocus />
           </TextField>
         </div>
       </div>
@@ -202,7 +238,7 @@ function RunForm({ devices, onStarted }: RunFormProps) {
           {devices.map((device) => (
             <Checkbox
               key={device.id}
-              label={`${device.model} · ${device.osVersion}`}
+              label={`${device.model} ${device.osVersion}`}
               checked={selected.includes(device.id)}
               onCheckedChange={() => toggle(device.id)}
             />
@@ -210,22 +246,22 @@ function RunForm({ devices, onStarted }: RunFormProps) {
         </CheckboxGroup>
       ) : null}
       <VStack gap="x1">
-        <Checkbox label={t("버튼 눌러보기", "Button crawl")} checked={buttonCheck} onCheckedChange={() => setButtonCheck((current) => !current)} />
+        <Checkbox label={t("버튼도 눌러 보기", "Also press buttons")} checked={buttonCheck} onCheckedChange={() => setButtonCheck((current) => !current)} />
         <Text textStyle="t3Regular" color="fg.neutralSubtle">
           {t(
-            "화면마다 버튼·링크를 최대 12개 눌러 반응·에러를 보고, 어디로 가는지 화면 지도에 모아요. 쓰기 요청은 막아요. 점검 시간이 길어져요.",
-            "Presses up to 12 buttons/links per screen, records reactions and errors, and collects where each one goes into the screen map. Write requests are blocked. The check takes longer.",
+            "화면마다 버튼을 12개까지 눌러 보고 화면 지도를 채워요. 플로우 만들 때 고를 버튼이 늘어나요. 시간이 더 걸려요.",
+            "Presses up to 12 buttons per screen and fills in the screen map, so you get more buttons to pick from when building flows. Takes longer.",
           )}
         </Text>
       </VStack>
-      <div className="devices-card-action">
-        <ActionButton type="submit" variant="neutralSolid" size="medium" loading={pending} disabled={pending}>
-          {t("점검 실행", "Run check")}
-        </ActionButton>
-      </div>
-      {message ? (
-        <Callout tone={message.error ? "critical" : "informative"} description={message.text} />
+      {error ? (
+        <Text textStyle="t3Regular" color="fg.critical">
+          {error}
+        </Text>
       ) : null}
+      <ActionButton type="submit" variant="brandSolid" size="large" loading={pending} disabled={pending}>
+        {t("점검 시작", "Start check")}
+      </ActionButton>
     </form>
   );
 }

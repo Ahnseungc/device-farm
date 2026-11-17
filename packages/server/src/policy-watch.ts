@@ -4,9 +4,9 @@ import type { PolicyRulesSummary, PolicyWatchState } from "@device-farm/core/pol
 import { askClaude, type AskClaude } from "@device-farm/engine/policy/claude";
 import { confluenceConfigFromEnv, fetchPolicySnapshot, type FetchLike } from "@device-farm/engine/policy/confluence";
 import { refreshRules } from "@device-farm/engine/policy/extract";
-import { fetchFigmaTexts } from "@device-farm/engine/policy/figma";
+import { fetchFigmaPagesOf, fetchFigmaTexts } from "@device-farm/engine/policy/figma";
 import { buildFrontFigma, readFrontFigmaMap } from "@device-farm/engine/policy/front-figma";
-import { readAllPageRules, readFigmaCache, writeFigmaCache } from "@device-farm/engine/policy/rules-store";
+import { figmaPageKey, readAllPageRules, readFigmaCache, readFigmaPageOf, writeFigmaCache, writeFigmaPageOf } from "@device-farm/engine/policy/rules-store";
 import { readChanges, readSnapshot, readSources, recordSnapshot } from "@device-farm/engine/policy/store";
 
 /** 일정 시각이 지났는지 보는 간격 (작성자 판단) */
@@ -28,6 +28,8 @@ export interface PolicyWatch {
   state: () => PolicyWatchState;
   /** 지금 확인. 이미 도는 중이면 false */
   checkNow: () => boolean;
+  /** 도는 확인을 멈춘다(지금 정책 하나는 마친다). 돌고 있지 않으면 false */
+  cancel: () => boolean;
   stop: () => void;
 }
 
@@ -65,6 +67,31 @@ export async function refreshFigma(fetchImpl: FetchLike, log: (message: string) 
   const texts = await fetchFigmaTexts(token, refs, fetchImpl);
   writeFigmaCache({ ...readFigmaCache(), ...texts });
   log(`피그마 노드 ${Object.keys(texts).length}개 문구 읽음`);
+  await refreshFigmaPages(token, front, fetchImpl, log);
+}
+
+/**
+ * 프론트 코드가 화면에 단 노드가 있는 피그마 페이지의 문구 전체를 새로 읽는다(「피그마와 다른 문구」는 이것과 본다).
+ * 노드 → 페이지는 처음 볼 때만 묻고 기억한다(노드는 페이지를 잘 옮기지 않는다). 페이지 하나가 수십 MB라 하나씩 받는다.
+ * 페이지 하나가 실패해도 나머지는 받는다.
+ */
+async function refreshFigmaPages(token: string, frontRefs: readonly string[], fetchImpl: FetchLike, log: (message: string) => void): Promise<void> {
+  const known = readFigmaPageOf();
+  const missing = [...new Set(frontRefs)].filter((ref) => !known[ref]);
+  const pageOf = missing.length > 0 ? { ...known, ...(await fetchFigmaPagesOf(token, missing, fetchImpl)) } : known;
+  writeFigmaPageOf(pageOf);
+  const pages = [...new Set(frontRefs.flatMap((ref) => (pageOf[ref] ? [pageOf[ref]] : [])))];
+  let read = 0;
+  for (const page of pages) {
+    try {
+      const texts = await fetchFigmaTexts(token, [page], fetchImpl);
+      writeFigmaCache({ ...readFigmaCache(), [figmaPageKey(page)]: texts[page] });
+      read += 1;
+    } catch (error) {
+      log(`피그마 페이지 ${page} 읽기 실패: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  log(`피그마 페이지 ${read}/${pages.length}개 문구 읽음`);
 }
 
 /**
@@ -80,11 +107,14 @@ export function startPolicyWatch(deps: PolicyWatchDeps): PolicyWatch {
   let failed: PolicyWatchState["failed"] = [];
   let extractFailed: PolicyWatchState["extractFailed"] = [];
   let progress: PolicyWatchState["progress"] = null;
+  let abort: AbortController | null = null;
 
   const run = async () => {
     const config = confluenceConfigFromEnv(deps.app.policy.confluence);
     if (!config || running) return;
     running = true;
+    abort = new AbortController();
+    const { signal } = abort;
     try {
       const result = await fetchPolicySnapshot(config, readSources().pages.map((page) => page.pageId), fetchImpl, now);
       const changes = recordSnapshot(result.snapshot);
@@ -100,8 +130,13 @@ export function startPolicyWatch(deps: PolicyWatchDeps): PolicyWatch {
         log: deps.log,
         now,
         onProgress: (done, total) => (progress = { done, total }),
+        signal,
       });
       extractFailed = refreshed.failed;
+      if (signal.aborted) {
+        deps.log("정책 확인을 중지했습니다. 남은 정책은 다음 확인 때 뽑습니다.");
+        return;
+      }
       refreshFrontFigma(deps.app.figma, deps.log);
       await refreshFigma(fetchImpl, deps.log);
     } catch (error) {
@@ -110,6 +145,7 @@ export function startPolicyWatch(deps: PolicyWatchDeps): PolicyWatch {
     } finally {
       running = false;
       progress = null;
+      abort = null;
     }
   };
 
@@ -141,6 +177,11 @@ export function startPolicyWatch(deps: PolicyWatchDeps): PolicyWatch {
     checkNow: () => {
       if (running) return false;
       void run();
+      return true;
+    },
+    cancel: () => {
+      if (!abort || abort.signal.aborted) return false;
+      abort.abort();
       return true;
     },
     stop: () => clearInterval(timer),

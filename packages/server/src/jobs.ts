@@ -1,18 +1,19 @@
 import { setTimeout as wait } from "node:timers/promises";
 
-export const jobKinds = ["run", "explore", "replay"] as const;
+export const jobKinds = ["run", "explore", "replay", "bot"] as const;
 export type JobKind = (typeof jobKinds)[number];
 
 export const busyMessages = {
   run: "이미 기기 점검 중입니다.",
   explore: "이미 탐색 중입니다.",
   replay: "다시 돌리기가 진행 중입니다.",
+  bot: "봇 점검 중입니다.",
 } as const satisfies Record<JobKind, string>;
 
 /** 자동 점검이 수동 작업이 끝나길 기다릴 때 확인 주기 (작성자 판단) */
 export const idlePollMs = 1_000;
 
-/** 기기 점검·탐색·다시 돌리기 중 하나만 돈다. 끝나면 onIdle. */
+/** 기기 점검·탐색·다시 돌리기·봇 점검 중 하나만 돈다. 끝나면 onIdle. */
 export function createJobGate(onIdle: () => void) {
   let current: JobKind | null = null;
 

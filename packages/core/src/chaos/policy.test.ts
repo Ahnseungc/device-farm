@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
 import { sampleApp } from "../config/sample-app";
-import { actionKey, chaosCandidates, isAvoidedName, pickWeighted, scoreAction, scoreAll, seededRandom } from "./policy";
+import { actionKey, chaosCandidates, deepStartPool, fillValues, isAvoidedName, multipliers, pickStartPath, pickWeighted, scoreAction, scoreAll, seededRandom } from "./policy";
 
 const nav = { ...sampleApp, noPressPathPattern: sampleApp.guard.noPressPathPattern };
 
@@ -21,6 +21,7 @@ const nav = { ...sampleApp, noPressPathPattern: sampleApp.guard.noPressPathPatte
     "doubleTap:button:OX퀴즈",
     "backDuringLoad::",
     "background::",
+    "otherApp::",
     "restart::",
     "homeReset::",
   ]);
@@ -77,7 +78,7 @@ assert.equal(isAvoidedName("출석체크", sampleApp.guard.avoidedNamePattern), 
 {
   const keypad = ["1", "2", "3"].map((name) => ({ role: "button" as const, name }));
   const kinds = chaosCandidates({ nav, path: "/my/simple-password/change", targets: keypad, lastPressed: keypad[0] }).map((action) => action.kind);
-  assert.deepEqual(kinds, ["back", "background", "restart", "homeReset"]);
+  assert.deepEqual(kinds, ["back", "background", "otherApp", "restart", "homeReset"]);
 }
 
 // 링크 우선, 기록은 화면마다 따로
@@ -110,6 +111,45 @@ assert.equal(chaosCandidates({ nav, path: "/my/report", targets: [{ role: "butto
   const scored = scoreAll(chaosCandidates({ nav, path: "/a", targets }), () => undefined, "/a", 0, () => true);
   assert.equal(scored.find((item) => item.action.name === "깊은")?.score, 2.25);
   assert.equal(scored.find((item) => item.action.name === "얕은")?.score, 1.5);
+}
+
+// 입력칸: 칸마다 채우기 후보, 숫자칸은 숫자 값. 비밀번호 화면에선 안 채운다
+{
+  const inputs = [
+    { name: "수량", numeric: true },
+    { name: "이름", numeric: false },
+  ];
+  const fills = chaosCandidates({ nav, path: "/my/address/new", targets: [], inputs }).filter((action) => action.kind === "fill");
+  assert.deepEqual(fills.map((action) => [action.name, action.value]), [
+    ["수량", fillValues.numeric],
+    ["이름", fillValues.text],
+  ]);
+  assert.equal(chaosCandidates({ nav, path: "/my/simple-password/change", targets: [], inputs }).some((action) => action.kind === "fill"), false);
+}
+
+// 경로가 안 바뀐 누르기(차트 기간)는 새 화면을 연 적 없으면 낮춘다
+{
+  const press = { kind: "press" as const, role: "button" as const, name: "1년" };
+  assert.equal(scoreAction(press, { tries: 1, openedNew: false, errors: 0, dead: 0, stayed: 1 }), 0.5 * multipliers.samePath);
+  assert.equal(scoreAction(press, { tries: 1, openedNew: true, errors: 0, dead: 0, stayed: 1 }), 0.5 * multipliers.newState);
+}
+
+// 깊은 시작 후보: 2단계 이상, 비밀번호·dev·광고 주소·다른 앱 제외. 안 간 곳부터
+{
+  const pool = deepStartPool(["/home", "/category/shoes/3?x=1", "/my/simple-password/change", "/dev/identity-qa", "/a/hZ%22", "(다른 앱 x)", "/order/cart/edit"]);
+  assert.deepEqual(pool, ["/category/shoes/3", "/order/cart/edit"]);
+  const random = seededRandom(3);
+  assert.equal(pickStartPath(pool, (path) => path === "/category/shoes/3", random), "/order/cart/edit");
+  assert.ok(pool.includes(pickStartPath(pool, () => true, random) ?? ""));
+  assert.equal(pickStartPath([], () => false, random), undefined);
+}
+
+// 홈 탭에 적힌 다른 글자(`homeTabLabels`)도 탭으로 본다. 누르기 후보에 섞이지 않는다
+{
+  const labeled = { ...nav, homeTabLabels: ["마이홈", nav.homeTabName] };
+  const actions = chaosCandidates({ nav: labeled, targets: [{ role: "link" as const, name: "마이홈" }, { role: "link" as const, name: "혜택" }], path: "/home" });
+  assert.equal(actions.some((action) => action.kind === "press" && action.name === "마이홈"), false);
+  assert.equal(actions.some((action) => action.kind === "tab"), true);
 }
 
 console.log("chaos policy ok");

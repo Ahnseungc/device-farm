@@ -7,16 +7,27 @@ import type { ScreenMap } from "@device-farm/core/device/screen-map";
 import type { BuildKind, Device, DeviceRun, DeviceState, LogEntry } from "@device-farm/core/device/types";
 import type { ExploreRun } from "@device-farm/core/explore/actions";
 import type { Issue } from "@device-farm/core/explore/probe";
-import type { PolicyIgnore } from "@device-farm/core/policy/compare";
-import type { PolicyWatchState } from "@device-farm/core/policy/snapshot";
 import type { FlowDocument, FlowStep } from "@device-farm/core/flows/schema";
+import type { FarmIssue } from "@device-farm/core/issues/issue";
+import type { PolicyIgnore } from "@device-farm/core/policy/compare";
+import type { DesignPage } from "@device-farm/core/policy/design-page";
+import type { PolicyWatchState } from "@device-farm/core/policy/snapshot";
+import type { DailyAnalysis, DailyInput } from "@device-farm/core/report/daily";
+import type { RunSummary } from "@device-farm/core/runs/summary";
 
 import { t } from "./i18n";
+
+import type { StopKind } from "./activity-model";
 
 export type DeviceWithState = Device & { state: DeviceState };
 export type DeviceSelection = string[] | "all";
 export type FlowsState = { candidates: FlowDocument[]; ready: FlowDocument[]; prds: string[]; prdRootSet: boolean; llmConfigured: boolean };
 export type FlowGenerateResult = { ok: true; generated: number; skipped: boolean; reason?: string };
+
+/** 서버 `daily_reports` 한 건(화면에서 쓰는 것만) */
+export type DailyReportView = { day: string; createdAt: string; input: DailyInput; analysis: DailyAnalysis | null; failure?: string };
+export type BotSummaryView = { text: string; at: string };
+export type IssueStatusChange = "checking" | "done" | "not-issue";
 
 export const pollIntervalMs = 2_000;
 
@@ -71,9 +82,22 @@ export const api = {
   app: () => request<PublicAppConfig>("GET", "/api/devices/app"),
   devices: () => request<DeviceWithState[]>("GET", "/api/devices"),
   stopRun: () => request<{ stopping: true }>("POST", "/api/devices/run/stop"),
-  startRun: (body: { kind: BuildKind; version?: string; devices: DeviceSelection; flowsOnly?: boolean; buttonCheck?: boolean }) =>
+  stopJob: (kind: StopKind) => request<{ stopping: true }>("POST", "/api/devices/jobs/stop", { kind }),
+  startRun: (body: {
+    kind: BuildKind;
+    version?: string;
+    devices: DeviceSelection;
+    flowsOnly?: boolean;
+    flowIds?: string[];
+    buttonCheck?: boolean;
+    designOnly?: boolean;
+    designPaths?: string[];
+  }) =>
     request<{ runId: string }>("POST", "/api/devices/run", body),
   latestRun: () => request<DeviceRun | null>("GET", "/api/devices/runs/latest"),
+  runs: () => request<RunSummary[]>("GET", "/api/devices/runs"),
+  designPages: () => request<DesignPage[]>("GET", "/api/devices/design"),
+  run: (id: string) => request<DeviceRun>("GET", `/api/devices/runs/one?id=${encodeURIComponent(id)}`),
 
   pendingBaselines: () => request<string[]>("GET", "/api/devices/baselines/pending"),
   confirmBaselines: (names?: string[]) =>
@@ -99,6 +123,13 @@ export const api = {
   policyIgnored: () => request<{ items: PolicyIgnore[] }>("GET", "/api/devices/policy/ignored"),
   ignorePolicy: (body: { key: string; hash: string; reason: string }) => request<{ items: PolicyIgnore[] }>("POST", "/api/devices/policy/ignore", body),
   unignorePolicy: (body: { key: string; hash: string }) => request<{ items: PolicyIgnore[] }>("POST", "/api/devices/policy/unignore", body),
+
+  issues: () => request<FarmIssue[]>("GET", "/api/devices/issues"),
+  setIssueStatus: (key: string, status: IssueStatusChange) => request<{ ok: true }>("POST", "/api/devices/issues/status", { key, status }),
+  latestDailyReport: () => request<DailyReportView | null>("GET", "/api/devices/daily/latest"),
+  startBot: () => request<{ started: string }>("POST", "/api/devices/chaos/start"),
+  botSummary: (id: string) => request<BotSummaryView | null>("GET", `/api/devices/chaos/summary?id=${encodeURIComponent(id)}`),
+  summarizeBot: (id: string) => request<BotSummaryView>("POST", "/api/devices/chaos/summary", { id }),
 
   latestExplore: () => request<ExploreRun[]>("GET", "/api/devices/explore/latest"),
   replay: (body: { runId: string; deviceId: string; pathId: string }) =>

@@ -13,6 +13,16 @@ export function loadDotEnv(file = path.resolve(".env")): boolean {
   return true;
 }
 
+/**
+ * 같은 맥의 디바이스팜 서버 주소(CLI·MCP). `FARM_TLS_CERT`가 있으면 HTTPS, 없으면 http.
+ * 호스트 자신이라 로그인 없이 통과한다. HTTPS면 Node가 인증서를 믿게 `NODE_EXTRA_CA_CERTS`를 셸에 둔다.
+ */
+export function farmLocalOrigin(port = Number(process.env.FARM_PORT) || 5173): string {
+  loadDotEnv();
+  const scheme = process.env.FARM_TLS_CERT?.trim() ? "https" : "http";
+  return `${scheme}://127.0.0.1:${port}`;
+}
+
 /** 앱 WebView가 여는 웹 주소. 환경 변수 → 앱 설정 `web` 순. 둘 다 비면 무엇을 채워야 하는지 알려 주고 throw. */
 export function webOrigin(app: Pick<AppConfig, "web">, kind: BuildKind): string {
   const name = webOriginEnv[kind];

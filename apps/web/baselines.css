@@ -61,3 +61,104 @@
   min-width: 0;
   word-break: break-all;
 }
+
+/* ── 기준 화면(토스식): 사진을 눌러 고르고, 아래 막대로 확정 ── */
+.bl-page {
+  padding-bottom: 96px;
+}
+
+.bl-page h1,
+.bl-page h2 {
+  margin: 0;
+}
+
+.bl-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x3);
+}
+
+.bl-tile {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x2);
+  cursor: pointer;
+}
+
+.bl-shot-wrap {
+  position: relative;
+  display: block;
+  border-radius: var(--seed-radius-r3);
+  outline: 2px solid transparent;
+  transition: outline-color var(--farm-dur-micro) var(--farm-ease-out), transform var(--farm-dur-micro) var(--farm-ease-out);
+}
+
+.bl-shot-wrap .baselines-shot {
+  display: block;
+  width: 100%;
+  aspect-ratio: 9 / 20;
+  object-fit: cover;
+  object-position: top;
+  border-radius: var(--seed-radius-r3);
+  background: var(--seed-color-bg-neutral-weak);
+}
+
+.bl-tile:hover .bl-shot-wrap {
+  transform: translateY(-2px);
+}
+
+.bl-tile[aria-pressed="true"] .bl-shot-wrap {
+  outline-color: var(--seed-color-bg-brand-solid);
+}
+
+.bl-check {
+  position: absolute;
+  top: var(--seed-dimension-x2);
+  right: var(--seed-dimension-x2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--seed-radius-full);
+  background: color-mix(in srgb, var(--seed-color-bg-layer-default) 80%, transparent);
+  border: 1px solid var(--seed-color-stroke-neutral-muted);
+  color: transparent;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.bl-tile[aria-pressed="true"] .bl-check {
+  background: var(--seed-color-bg-brand-solid);
+  border-color: var(--seed-color-bg-brand-solid);
+  color: var(--seed-color-fg-neutral-inverted);
+}
+
+.bl-tile:focus-visible .bl-shot-wrap {
+  outline-color: var(--seed-color-stroke-focus-ring);
+}
+
+.bl-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bl-bar {
+  position: fixed;
+  bottom: var(--seed-dimension-x5);
+  left: 50%;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: var(--seed-dimension-x6);
+  padding: var(--seed-dimension-x3) var(--seed-dimension-x3) var(--seed-dimension-x3) var(--seed-dimension-x5);
+  background: var(--seed-color-bg-layer-floating);
+  border: 1px solid var(--seed-color-stroke-neutral-muted);
+  border-radius: var(--seed-radius-full);
+  box-shadow: 0 8px 28px color-mix(in srgb, var(--seed-color-fg-neutral) 16%, transparent);
+  transform: translateX(-50%);
+  animation: farm-notice-in var(--farm-dur-short) var(--farm-ease-out);
+}

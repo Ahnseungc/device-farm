@@ -7,6 +7,8 @@ assert.equal(routeOfFile("app/(protected)/(my)/my/withdraw/_src/organisms/A/A.ts
 assert.equal(routeOfFile("app/(protected)/(my)/my/withdraw/[withdrawalId]/page.tsx"), "/my/withdraw/*");
 assert.equal(routeOfFile("app/page.tsx"), "/");
 assert.equal(routeOfFile("containers/A.tsx"), null);
+// 공용 스타일은 화면이 아니다
+assert.equal(routeOfFile("app/globals.css"), null);
 
 const ref = "origin/development";
 const line = parseGrepLine(`${ref}:app/(a)/x/_src/A.stories.tsx:8:  "https://www.figma.com/design/KEY1/?node-id=42570-336184";`, ref);

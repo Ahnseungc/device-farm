@@ -11,9 +11,10 @@ import { DeviceLocks } from "@device-farm/core/device/lock";
 import type { Device } from "@device-farm/core/device/types";
 import { iosBackUnsupported } from "@device-farm/devices/stream/ios";
 
+import { requestUser, setRequestUser } from "../auth/http";
 import { createJobGate } from "../jobs";
 import type { Farm } from "../types";
-import { botLockMessage, deviceMiddleware, noLockMessage, prodExploreMessage, streamIdOf } from "./device-api";
+import { botLockMessage, createPacketGate, deviceMiddleware, noLockMessage, prodExploreMessage, streamIdOf } from "./device-api";
 
 const scratch = mkdtempSync(path.join(tmpdir(), "device-api-"));
 const resultsRoot = path.join(scratch, "test-results");
@@ -54,6 +55,7 @@ function fakeFarm() {
       return started ? { ok: true, runId: "run-1" } : { ok: false, error: gate.busyMessage() };
     },
     stopRun: () => gate.isBusy(),
+    stopJob: (kind) => kind === "bot" && gate.isBusy(),
     latestRun: () => null,
     pendingBaselines: () => [],
     candidatePng: () => null,
@@ -72,6 +74,13 @@ function fakeFarm() {
     recordControl: () => {},
     policyState: () => null,
     checkPolicy: () => false,
+    runSummaries: () => [],
+    designPages: () => [],
+    runById: () => null,
+    issues: () => [],
+    setIssueStatus: async () => false,
+    latestDailyReport: () => null,
+    startBot: () => ({ ok: false, error: "봇 점검 중입니다." }),
   };
   return { farm, calls, release };
 }
@@ -83,8 +92,10 @@ interface Reply {
   json: () => unknown;
 }
 
-async function call(farm: Farm, method: string, url: string, body?: unknown, headers: Record<string, string> = {}): Promise<Reply> {
-  const req = Object.assign(Readable.from(body === undefined ? [] : [Buffer.from(JSON.stringify(body))]), { method, url, headers });
+async function call(farm: Farm, method: string, url: string, body?: unknown, user?: string): Promise<Reply> {
+  const req = Object.assign(Readable.from(body === undefined ? [] : [Buffer.from(JSON.stringify(body))]), { method, url, headers: {} });
+  // 관문(auth)이 정한 사용자. 안 주면 호스트 자신(local)
+  if (user) setRequestUser(req as unknown as IncomingMessage, user);
   const reply: Reply = { status: 200, headers: {}, body: Buffer.alloc(0), json: () => JSON.parse(reply.body.toString("utf8")) };
   await new Promise<void>((resolve, reject) => {
     const res = {
@@ -130,6 +141,9 @@ const run = { kind: "dev", version: "2.1.5", devices: "all" };
   // 도는 점검은 멈출 수 있다
   const stop = await call(farm, "POST", "/api/devices/run/stop");
   assert.equal(stop.status, 200);
+  // 플로팅 「중지」: 종류별. 모르는 종류는 400
+  assert.equal((await call(farm, "POST", "/api/devices/jobs/stop", { kind: "bot" })).status, 200);
+  assert.equal((await call(farm, "POST", "/api/devices/jobs/stop", { kind: "nope" })).status, 400);
   release();
 }
 
@@ -139,6 +153,8 @@ const run = { kind: "dev", version: "2.1.5", devices: "all" };
   const stop = await call(farm, "POST", "/api/devices/run/stop");
   assert.equal(stop.status, 409);
   assert.deepEqual(stop.json(), { error: "멈출 점검이 없어요." });
+  const job = await call(farm, "POST", "/api/devices/jobs/stop", { kind: "explore" });
+  assert.equal(job.status, 409);
 }
 
 {
@@ -177,14 +193,14 @@ const run = { kind: "dev", version: "2.1.5", devices: "all" };
   assert.equal(noLock.status, 423);
   assert.deepEqual(noLock.json(), { error: noLockMessage });
 
-  assert.equal((await call(farm, "POST", "/api/devices/A/lock", undefined, { "tailscale-user-login": "kim@example" })).status, 200);
-  assert.deepEqual(farm.locks.ownerOf("A"), { kind: "user", user: "kim@example" });
+  assert.equal((await call(farm, "POST", "/api/devices/A/lock", undefined, "team@192.168.13.20")).status, 200);
+  assert.deepEqual(farm.locks.ownerOf("A"), { kind: "user", user: "team@192.168.13.20" });
   assert.equal((await call(farm, "POST", "/api/devices/A/input", tap)).status, 423, "다른 사용자(local)의 입력");
-  assert.equal((await call(farm, "POST", "/api/devices/A/input", tap, { "tailscale-user-login": "kim@example" })).status, 200);
+  assert.equal((await call(farm, "POST", "/api/devices/A/input", tap, "team@192.168.13.20")).status, 200);
   assert.deepEqual(calls.inputs, [tap]);
   const other = await call(farm, "POST", "/api/devices/A/lock");
   assert.equal(other.status, 409);
-  assert.equal((await call(farm, "DELETE", "/api/devices/A/lock", undefined, { "tailscale-user-login": "kim@example" })).status, 200);
+  assert.equal((await call(farm, "DELETE", "/api/devices/A/lock", undefined, "team@192.168.13.20")).status, 200);
   assert.equal(farm.locks.ownerOf("A"), null);
 
   assert.equal((await call(farm, "POST", "/api/devices/I/lock")).status, 200);
@@ -219,7 +235,23 @@ const run = { kind: "dev", version: "2.1.5", devices: "all" };
 }
 
 rmSync(scratch, { recursive: true, force: true });
-// 접근 관문: 다른 도메인 계정은 API에서 403 JSON
+console.log("device-api ok");
+
+// 느린 화면: 못 나간 바이트가 한도를 넘으면 다음 키프레임까지 건너뛰고, 키프레임에서 버퍼가 비었으면 다시 보낸다
+{
+  let buffered = 0;
+  const pass = createPacketGate(() => buffered, 100);
+  assert.equal(pass(false), true);
+  buffered = 101;
+  assert.equal(pass(false), false);
+  assert.equal(pass(true), false, "아직 밀려 있으면 키프레임도 건너뛴다");
+  buffered = 0;
+  assert.equal(pass(false), false, "키프레임 전 조각은 건너뛴다");
+  assert.equal(pass(true), true);
+  assert.equal(pass(false), true);
+}
+
+// 접근 관문: 다른 도메인 계정은 API에서 403 JSON, 허용 계정은 통과하고 사용자 이름이 정해진다
 {
   const { createAccessMiddleware } = await import("./device-api");
   const accessMiddleware = createAccessMiddleware(["example.com"]);
@@ -241,6 +273,27 @@ rmSync(scratch, { recursive: true, force: true });
   const ok = { ...req, headers: { ...req.headers, "tailscale-user-login": "a@example.com" } };
   accessMiddleware(ok as unknown as IncomingMessage, res as unknown as ServerResponse, () => (sent.next = true));
   assert.equal(sent.next, true);
+  assert.equal(requestUser(ok as unknown as IncomingMessage), "a@example.com");
 }
 
-console.log("device-api ok");
+// 디자인 점검 요청: 경로를 주면 설치 없이 그 화면만(라벨에 경로), 경로 형식이 틀리면 400
+{
+  const requests: unknown[] = [];
+  const designFarm = { startRun: (request: unknown) => (requests.push(request), { ok: true, runId: "d-1" }), designPages: () => [] } as unknown as Farm;
+  assert.equal((await call(designFarm, "POST", "/api/devices/run", { kind: "dev", devices: "all", designPaths: ["/home"] })).status, 202);
+  assert.deepEqual(requests.at(-1), {
+    kind: "dev",
+    version: "설치된 앱",
+    deviceIds: "all",
+    flowsOnly: false,
+    flowIds: undefined,
+    buttonCheck: false,
+    designOnly: true,
+    designPaths: ["/home"],
+    label: "디자인 점검 · /home",
+  });
+  assert.equal((await call(designFarm, "POST", "/api/devices/run", { kind: "dev", devices: "all", designOnly: true })).status, 202);
+  assert.equal((requests.at(-1) as { label: string }).label, "디자인 점검");
+  assert.equal((await call(designFarm, "POST", "/api/devices/run", { kind: "dev", devices: "all", designPaths: ["home"] })).status, 400);
+  assert.deepEqual((await call(designFarm, "GET", "/api/devices/design")).json(), []);
+}

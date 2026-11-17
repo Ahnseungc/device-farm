@@ -9,9 +9,12 @@ import type { Device, DeviceRun, LogEntry } from "@device-farm/core/device/types
 import type { ExploreRun } from "@device-farm/core/explore/actions";
 import type { PolicyCheck, PolicyIgnore } from "@device-farm/core/policy/compare";
 import type { PolicyRule } from "@device-farm/core/policy/rules";
+import type { FarmIssue } from "@device-farm/core/issues/issue";
+import type { DesignPage } from "@device-farm/core/policy/design-page";
 import type { PolicyWatchState } from "@device-farm/core/policy/snapshot";
+import type { RunSummary } from "@device-farm/core/runs/summary";
 
-import type { DeviceWithState, FlowsState } from "../api-client";
+import type { BotSummaryView, DailyReportView, DeviceWithState, FlowsState } from "../api-client";
 import { homeDiffUrl, screenUrl, type ScreenId } from "./screens";
 
 const minuteMs = 60_000;
@@ -154,6 +157,7 @@ export const demoFiles: Record<string, string> = {
   "runs/demo-run/pixel-8/home/baseline.png": screenUrl("home"),
   "runs/demo-run/pixel-8/home/screenshot.png": screenUrl("homeBroken"),
   "runs/demo-run/pixel-8/home/diff.png": homeDiffUrl(),
+  "runs/demo-run/pixel-8/attendance/screenshot.png": screenUrl("attendance"),
   [`chaos/demo-chaos-2/${chaosShot}`]: screenUrl("attendanceError"),
 };
 
@@ -442,3 +446,121 @@ export const demoExplore: ExploreRun[] = [
     replayFailures: [],
   },
 ];
+
+/** 「점검 기록」 목록: 위 실행 하나와 그 전날 실행 하나. 종류별 수는 데모 이름(영어)에 맞춰 직접 적는다 */
+export const demoRuns: RunSummary[] = [
+  {
+    runId: demoRun.runId,
+    kind: demoRun.kind,
+    version: demoRun.version,
+    appVersion: "1.8.0",
+    trigger: demoRun.trigger,
+    startedAt: demoRun.startedAt,
+    finishedAt: demoRun.finishedAt,
+    categories: { screen: { total: 12, failed: 1 }, flow: { total: 3, failed: 0 }, data: { total: 3, failed: 0 }, policy: { total: 1, failed: 1 } },
+  },
+  {
+    runId: "demo-run-yesterday",
+    kind: "dev",
+    version: "1.7.2",
+    appVersion: "1.7.2",
+    trigger: "auto",
+    startedAt: ago(dayMs + 42 * minuteMs),
+    finishedAt: ago(dayMs + 30 * minuteMs),
+    categories: { screen: { total: 12, failed: 0 }, flow: { total: 3, failed: 0 }, data: { total: 3, failed: 0 } },
+  },
+];
+
+/** 「디자인 점검」 화면 목록 */
+export const demoDesignPages: DesignPage[] = [
+  {
+    path: "/benefit/attendance",
+    hasFigma: true,
+    rules: attendanceRules.length,
+    last: { runId: demoRun.runId, at: demoRun.startedAt, deviceId: pixel.id, status: "failed", figmaCoverage: 0.82, mismatches: 1, message: "“50P for a 7-day streak” is in Figma but not on screen." },
+  },
+  {
+    path: "/cart",
+    hasFigma: true,
+    rules: shippingRules.length,
+    last: { runId: demoRun.runId, at: demoRun.startedAt, deviceId: pixel.id, status: "passed", figmaCoverage: 0.97, mismatches: 0 },
+  },
+  { path: "/category", hasFigma: false, rules: 0, last: null },
+];
+
+const demoIssueBase = { runId: demoRun.runId, build: "dev 1.8.0", device: `${pixel.model} · Android ${pixel.osVersion}`, onSlack: true, links: [] };
+
+/** 「문제」 목록 */
+export const demoIssues: FarmIssue[] = [
+  {
+    ...demoIssueBase,
+    key: "demo-issue-policy",
+    kind: "policy",
+    label: "Bug candidate",
+    title: "Check-in streak bonus is missing",
+    detail: "The policy says a 7-day check-in streak earns 50P, and Figma shows it, but the screen doesn't.",
+    path: "/benefit/attendance",
+    status: "open",
+    sentAt: demoRun.finishedAt ?? demoRun.startedAt,
+    links: [{ label: "Check-in policy", url: policyUrl(policyPageId) }],
+    screenshot: "test-results/runs/demo-run/pixel-8/attendance/screenshot.png",
+  },
+  {
+    ...demoIssueBase,
+    key: "demo-issue-network",
+    kind: "app-error",
+    label: "Request failed",
+    title: "Size guide request returns 500",
+    detail: "GET /v1/products/101/size 500",
+    path: "/products/101",
+    status: "checking",
+    by: "alex",
+    at: ago(3 * hourMs),
+    sentAt: ago(5 * hourMs),
+    onSlack: false,
+  },
+  {
+    ...demoIssueBase,
+    key: "demo-issue-design",
+    kind: "design",
+    label: "Text differs from Figma",
+    title: "Cart has text that isn't in Figma",
+    detail: "",
+    path: "/cart",
+    status: "done",
+    by: "sam",
+    at: ago(dayMs),
+    sentAt: ago(2 * dayMs),
+    items: [{ path: "/cart", texts: ["Free shipping over $50", "Checkout now"] }],
+  },
+];
+
+/** 아침 요약(Claude) */
+export const demoDailyReport: DailyReportView = {
+  day: new Date(now).toLocaleDateString("sv-SE"),
+  createdAt: ago(2 * hourMs),
+  input: {
+    from: ago(dayMs),
+    to: ago(2 * hourMs),
+    stats: { runs: 2, screens: 37, failedScreens: 2, flowsPassed: 3, flows: 3, botRuns: 2, botSteps: 240, botErrorSteps: 3, policyBugs: 1, designDiffs: 1, builds: ["dev 1.8.0"] },
+    evidence: [],
+    previous: [],
+    skipped: [],
+  },
+  analysis: {
+    summary: "Flows all passed. One real problem: the check-in screen is missing the 7-day streak bonus from the policy. The home baseline diff on Pixel 8 looks like a new banner.",
+    issues: [
+      { title: "Check-in streak bonus is missing", kind: "app-bug", evidence: ["P1"], action: "Show the 50P streak bonus on /benefit/attendance.", new: true },
+      { title: "Home differs from the baseline on Pixel 8", kind: "unverified", evidence: ["R1"], action: "If the new banner is expected, confirm the baseline.", new: true },
+    ],
+    stable: "Category, Me and Cart screens",
+  },
+};
+
+/** 봇 점검 Claude 요약 */
+export const demoBotSummaries: Record<string, BotSummaryView> = {
+  "demo-chaos-2": {
+    text: "Three error steps all came from the size guide request returning 500 on product pages. No crashes or blank screens.",
+    at: ago(4 * hourMs),
+  },
+};

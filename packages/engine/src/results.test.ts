@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import type { Device, DeviceRun } from "@device-farm/core/device/types";
 import type { Exec } from "@device-farm/devices/exec";
+
+import { all, openFarmDb } from "./db/farm-db";
 
 import {
   closeUnfinishedRun,
@@ -35,18 +37,27 @@ function run(runId: string, startedAt: number, overrides: Partial<DeviceRun> = {
 }
 
 const root = mkdtempSync(path.join(tmpdir(), "results-test-"));
+const db = openFarmDb(":memory:");
 try {
-  writeRun(run("old", now - 31 * dayMs), root);
-  writeRun(run("recent", now - 29 * dayMs), root);
-  writeRun(run("passed", now - dayMs), root);
-  assert.deepEqual(readdirSync(path.join(root, "passed")), ["run.json"]);
-  assert.equal(readLatestRun(root)?.runId, "passed");
+  writeRun(run("old", now - 31 * dayMs), db);
+  writeRun(run("recent", now - 29 * dayMs), db);
+  writeRun(run("passed", now - dayMs), db);
+  writeRun(run("passed", now - dayMs), db);
+  assert.equal(readLatestRun(db)?.runId, "passed");
+  // 검색용 화면 행도 같이 쓴다. 다시 써도 겹치지 않는다
+  const screens = all<object>(db, "SELECT run_id, device_id, scenario, status FROM device_screens WHERE run_id = 'passed'").map((row) => ({ ...row }));
+  assert.deepEqual(screens, [{ run_id: "passed", device_id: "R3CN", scenario: "홈", status: "passed" }]);
 
-  assert.equal(pruneRuns(root, now), 1);
+  // 묶음 폴더도 같이 지운다. DB에 없는 오래된 폴더는 수정 시각으로 본다
+  mkdirSync(path.join(root, "old", "R3CN"), { recursive: true });
+  mkdirSync(path.join(root, "orphan"));
+  utimesSync(path.join(root, "orphan"), (now - 40 * dayMs) / 1000, (now - 40 * dayMs) / 1000);
+  assert.equal(pruneRuns(root, now, undefined, db), 2);
   assert.equal(existsSync(path.join(root, "old")), false);
-  assert.equal(existsSync(path.join(root, "recent")), true);
+  assert.equal(existsSync(path.join(root, "orphan")), false);
+  assert.deepEqual(all<{ run_id: string }>(db, "SELECT run_id FROM device_runs ORDER BY run_id").map((row) => row.run_id), ["passed", "recent"]);
 
-  assert.equal(closeUnfinishedRun(root, () => now), false);
+  assert.equal(closeUnfinishedRun(db, () => now), false);
   writeRun(
     run("crashed", now, {
       finishedAt: null,
@@ -55,10 +66,10 @@ try {
         { device: { ...device, id: "B" }, status: "running", screens: [] },
       ],
     }),
-    root,
+    db,
   );
-  assert.equal(closeUnfinishedRun(root, () => now + 5000), true);
-  const closed = readLatestRun(root);
+  assert.equal(closeUnfinishedRun(db, () => now + 5000), true);
+  const closed = readLatestRun(db);
   assert.equal(closed?.finishedAt, new Date(now + 5000).toISOString());
   assert.equal(closed?.outcomes[0].status, "passed");
   assert.deepEqual([closed?.outcomes[1].status, closed?.outcomes[1].message], ["skipped", restartMessage]);
@@ -92,6 +103,7 @@ try {
   assert.equal(calls[0].at(-1), "/out/video.mp4");
   assert.equal(existsSync(calls[0][calls[0].indexOf("-i") + 1]), false);
 } finally {
+  db.close();
   rmSync(root, { recursive: true, force: true });
 }
 

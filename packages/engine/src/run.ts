@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import path from "node:path";
 
+import { diffMessage } from "@device-farm/core/baseline/diff";
 import { checkButtons as defaultCheckButtons, summarizeButtons, type ButtonResult } from "@device-farm/core/device/button-check";
 import type { ScreenDriver } from "@device-farm/core/device/driver";
 import type { DeviceLocks, LockOwner } from "@device-farm/core/device/lock";
@@ -19,10 +20,12 @@ import {
   type RunTrigger,
 } from "@device-farm/core/device/types";
 import type { Issue } from "@device-farm/core/explore/probe";
+import { normalizePath } from "@device-farm/core/device/screen-ready";
 import { runFlow as defaultRunFlow, withHome, type FlowResult } from "@device-farm/core/flows/run";
 import { stepLabels, stepTarget, type FlowDocument } from "@device-farm/core/flows/schema";
+import { layoutMessage } from "@device-farm/core/layout/layout";
 import { LogRing } from "@device-farm/core/logs/ring";
-import type { QaScreen } from "@device-farm/core/qa/rules";
+import type { QaCheck, QaScreen } from "@device-farm/core/qa/rules";
 import type { QaReport } from "@device-farm/core/qa/run";
 import { hasBugCandidate } from "@device-farm/core/policy/compare";
 import type { ScreenScenario } from "@device-farm/core/scenarios";
@@ -32,6 +35,7 @@ import { installAndLaunch as defaultInstallAndLaunch, type InstallResult } from 
 import { installSourceOf } from "@device-farm/devices/install-source";
 
 import { checkScreen as defaultCheckScreen, type ScreenCheck } from "./check";
+import { checkLayout as defaultCheckLayout } from "./layout/check";
 import type { PolicyScreen, PolicyScreenReport } from "./policy/screen-check";
 import { writeFailureBundle, type BundleFrame, type FailureBundleInput } from "./results";
 
@@ -49,8 +53,16 @@ export interface RunRequest {
   trigger?: RunTrigger;
   /** HTTP가 202로 먼저 돌려줄 때 미리 만든 id. 없으면 새로 만든다. */
   runId?: string;
-  /** true면 설치·화면 점검 없이 지금 깔린 앱으로 확정 플로우만 돈다. */
+  /** true면 설치·화면·데이터·정책 점검 없이 지금 깔린 앱으로 확정 플로우만 돈다. */
   flowsOnly?: boolean;
+  /** 있으면 이 확정 플로우만 돈다(플로우 점검 탭에서 하나씩 실행). flowsOnly와 함께 쓴다 */
+  flowIds?: readonly string[];
+  /** true면 설치·화면·플로우·데이터 점검 없이 지금 깔린 앱으로 디자인(정책·피그마) 화면만 본다(「디자인 점검」 탭). */
+  designOnly?: boolean;
+  /** 있으면 이 경로의 디자인 화면만. designOnly와 함께 쓴다 */
+  designPaths?: readonly string[];
+  /** 점검 이름(「야간 플로우 점검」). 실행 기록과 진행 중 플로팅 제목에 쓴다 */
+  label?: string;
   /** true면 화면마다 보이는 버튼을 눌러 반응·에러를 본다(`button-check.ts`). */
   buttonCheck?: boolean;
 }
@@ -79,6 +91,8 @@ export interface RunDeps {
   /** 점검 대상 앱 설정 */
   app: AppConfig;
   exec: Exec;
+  /** 화면 깨짐 점검(테스트 주입용). 없으면 열린 화면 DOM을 잰다 */
+  checkLayout?: (driver: ScreenDriver, screenPath: string, log: (message: string) => void) => Promise<QaCheck[]>;
   locks: DeviceLocks;
   listDevices: () => Promise<Device[]>;
   fetchBuild: (input: { platform: Platform; kind: BuildKind; version: string }) => Promise<string>;
@@ -94,13 +108,19 @@ export interface RunDeps {
   /** 정책·피그마 대조 화면(docs/design-policy-figma.md). 데이터 QA 뒤에 이어서 돈다. runPolicy가 없으면 돌지 않는다. */
   policyScreens?: readonly PolicyScreen[];
   runPolicy?: (driver: ScreenDriver, screen: PolicyScreen) => Promise<PolicyScreenReport>;
+  /**
+   * 플로우 「디자인 확인」 스텝: 경로의 규칙·피그마를 찾고(없으면 null) 화면을 다시 열지 않고 대조한다.
+   * 둘 다 있어야 돈다. 없으면 화면 깨짐만 잰다.
+   */
+  designScreenFor?: (path: string) => PolicyScreen | null;
+  runDesign?: (driver: ScreenDriver, screen: PolicyScreen) => Promise<PolicyScreenReport>;
   onUpdate: (run: DeviceRun) => void;
   installAndLaunch?: (device: Device, file: string, appId: string, exec: Exec) => Promise<InstallResult>;
   /** 설치 방식이 testflight인 기기(iOS dev). 설치된 버전이 맞을 때까지 기다린 뒤 앱을 연다. */
   waitForTestflight?: (device: Device, kind: BuildKind, version: string) => Promise<InstallResult>;
   checkScreen?: (driver: ScreenDriver, device: Device, scenario: ScreenScenario) => Promise<ScreenCheck>;
   now?: () => number;
-  /** 있으면 실패 화면마다 실패 묶음을 쓴다. 없으면(테스트·CLI) run.json만 남는다. */
+  /** 있으면 실패 화면마다 실패 묶음을 쓴다. 없으면(테스트·CLI) 실행 기록만 남는다. */
   capture?: (device: Device, driver: ScreenDriver, appId: string) => Promise<DeviceCapture>;
   /** 기준 비교로 실패했을 때 기준·차이 PNG. 없으면 undefined. */
   baselineFor?: (device: Device, scenario: ScreenScenario, screenshot: Buffer) => BaselineImages | undefined;
@@ -120,6 +140,8 @@ interface DeviceJob {
   request: RunRequest;
   run: DeviceRun;
   deps: RunDeps;
+  /** 배치를 이미 잰 화면 경로. 화면 점검·정책 점검이 같은 화면을 열어도 한 번만 잰다 */
+  layoutChecked?: Set<string>;
 }
 
 export function errorMessage(error: unknown): string {
@@ -230,13 +252,18 @@ async function checkOne(job: DeviceJob, driver: ScreenDriver, scenario: ScreenSc
 /** 정상으로 열린 화면에서만 버튼을 누른다. 에러가 난 버튼이 있으면 그 화면을 실패로 바꾼다. */
 async function pressButtons(job: DeviceJob, driver: ScreenDriver, capture: DeviceCapture | null, scenario: ScreenScenario, result: ScreenCheck): Promise<{ result: ScreenCheck; buttons?: ButtonResult[] }> {
   const setup = job.deps.buttonCheck;
-  if (!job.request.buttonCheck || !setup || (result.status !== "passed" && result.status !== "candidate")) return { result };
+  // 기준 화면과 그림만 다른 화면도 정상으로 열린 것이다. 기준이 오래되면(2026-11-16 10월 기준) 거의 모든 화면이 여기 걸려 화면 지도가 안 채워졌다
+  const opened = result.status === "passed" || result.status === "candidate" || (result.status === "failed" && result.message === diffMessage);
+  if (!job.request.buttonCheck || !setup || !opened) return { result };
   job.outcome.current = `${scenario.name} · 버튼 눌러보기`;
   job.deps.onUpdate(job.run);
   const ring = capture?.ring ?? new LogRing();
+  // 시나리오 주소가 다른 화면으로 넘어가 열리면(「/」 → 「/home」) 실제로 열린 주소를 기준으로 한다.
+  // 시나리오 주소로 비교하면 첫 버튼 뒤 「화면 복귀 실패」로 나머지를 다 건너뛰고, 지도에도 「/」로 남았다(2026-11-16 홈)
+  const openedPath = await driver.currentPath().catch(() => scenario.path);
   const buttons = await (setup.checkButtons ?? defaultCheckButtons)(driver, {
     probe: (since) => setup.probe(driver, ring, since),
-    screenPath: scenario.path,
+    screenPath: openedPath,
     restore: async () => {
       // 딥링크로 다시 열기만 하면 앱이 WebView 스택을 계속 쌓아 메모리 부족으로 죽을 수 있다. 스택을 먼저 닫는다.
       await driver.goHome?.();
@@ -245,7 +272,7 @@ async function pressButtons(job: DeviceJob, driver: ScreenDriver, capture: Devic
     },
   });
   try {
-    setup.recordMap?.(scenario.path, buttons);
+    setup.recordMap?.(openedPath, buttons);
   } catch (error) {
     // 지도는 부가 기록이다. 못 써도 점검 결과는 바꾸지 않는다.
     logOf(job.deps)(`화면 지도 기록 실패: ${errorMessage(error)}`);
@@ -258,25 +285,49 @@ async function pressButtons(job: DeviceJob, driver: ScreenDriver, capture: Devic
 
 /** 시나리오를 목록 순서로. login_required가 나오면 멈춘다. 연결 끊김은 throw로 올린다. */
 async function runScenarios(job: DeviceJob, driver: ScreenDriver, capture: DeviceCapture | null): Promise<void> {
+  if (job.request.designOnly) return runPolicyScreens(job, driver, capture);
   for (const scenario of job.request.flowsOnly ? [] : job.deps.scenarios) {
     if (isStopped(job)) return;
     job.outcome.phase = "checking";
     job.outcome.current = scenario.name;
     job.deps.onUpdate(job.run);
-    const { result, buttons } = await pressButtons(job, driver, capture, scenario, await checkOne(job, driver, scenario));
+    const opened = await checkOne(job, driver, scenario);
+    if (opened.status === "passed" || opened.status === "candidate") await recordLayout(job, driver, capture, scenario.path);
+    const { result, buttons } = await pressButtons(job, driver, capture, scenario, opened);
     const bundle = result.status === "failed" && capture ? await bundleFailure(job, driver, capture, scenario.name, result, scenario) : {};
     job.outcome.screens.push({ scenario: scenario.name, status: result.status, message: result.message, buttons, ...bundle });
     job.deps.onUpdate(job.run);
     if (result.status === "login_required") return;
   }
   await runFlows(job, driver, capture);
+  // 「플로우만 점검」은 데이터·정책 점검까지 돌아 정책 화면 99개를 더 봤다(2026-11-12). 플로우만 돈다
+  if (job.request.flowsOnly) return;
   await runQaScreens(job, driver, capture);
   await runPolicyScreens(job, driver, capture);
 }
 
-export const flowScenarioPrefix = "플로우 · ";
-export const qaScenarioPrefix = "데이터 · ";
-export const policyScenarioPrefix = "정책 · ";
+/** 결과 목록 앞머리. 점검 이름(플로우 점검·데이터 점검·정책 점검)과 같게 둔다 (2026-11-12, 예전: 「플로우 · 」 등) */
+export const flowScenarioPrefix = "플로우 점검 · ";
+export const layoutScenarioPrefix = "화면 깨짐 점검 · ";
+
+/**
+ * 지금 열린 화면을 재고, 깨졌으면 `화면 깨짐 점검 · 경로`로 결과에 남긴다(docs/design-device-farm.md).
+ * 통과한 화면은 남기지 않는다 — 화면마다 한 줄씩 늘어 결과 목록이 두 배가 된다.
+ */
+async function recordLayout(job: DeviceJob, driver: ScreenDriver, capture: DeviceCapture | null, screenPath: string): Promise<void> {
+  job.layoutChecked ??= new Set();
+  if (job.layoutChecked.has(screenPath)) return;
+  job.layoutChecked.add(screenPath);
+  const checks = await (job.deps.checkLayout ?? defaultCheckLayout)(driver, screenPath, logOf(job.deps));
+  const message = layoutMessage(checks);
+  if (!message) return;
+  const name = `${layoutScenarioPrefix}${screenPath}`;
+  const bundle = capture ? await bundleFailure(job, driver, capture, name, { status: "failed", message }) : {};
+  job.outcome.screens.push({ scenario: name, status: "failed", message, checks, ...bundle });
+  job.deps.onUpdate(job.run);
+}
+export const qaScenarioPrefix = "데이터 점검 · ";
+export const policyScenarioPrefix = "정책 점검 · ";
 
 const qaScreensOf = (deps: RunDeps) => (deps.runQa ? (deps.qaScreens ?? []) : []);
 
@@ -321,11 +372,15 @@ function policyMessage(report: PolicyScreenReport): string | undefined {
   return notes.length > 0 ? notes.join(" · ") : undefined;
 }
 
+/** 이번에 볼 디자인(정책) 화면. `designPaths`가 있으면 그 경로만 */
+export const designScreensOf = (request: RunRequest, deps: Pick<RunDeps, "policyScreens">) =>
+  (deps.policyScreens ?? []).filter((screen) => !request.designPaths || request.designPaths.includes(screen.path));
+
 /** 정책 대조 화면을 순서대로. 어긋남은 실패가 아니고, 무시하지 않은 "버그 후보"가 있을 때만 그 화면을 실패로 둔다 */
 async function runPolicyScreens(job: DeviceJob, driver: ScreenDriver, capture: DeviceCapture | null): Promise<void> {
   const { runPolicy } = job.deps;
   if (!runPolicy) return;
-  for (const screen of job.deps.policyScreens ?? []) {
+  for (const screen of designScreensOf(job.request, job.deps)) {
     if (isStopped(job)) return;
     const name = `${policyScenarioPrefix}${screen.path}`;
     job.outcome.phase = "checking";
@@ -338,12 +393,39 @@ async function runPolicyScreens(job: DeviceJob, driver: ScreenDriver, capture: D
       if (isOffline(error)) throw error;
       report = { path: screen.path, checks: [], situational: 0, cached: false, judgeError: errorMessage(error) };
     }
-    const status = hasBugCandidate(report.checks) ? "failed" : "passed";
-    const message = policyMessage(report);
-    const bundle = status === "failed" && capture ? await bundleFailure(job, driver, capture, name, { status: "failed", message }) : {};
-    job.outcome.screens.push({ scenario: name, status, message, checks: report.checks, ...bundle });
-    job.deps.onUpdate(job.run);
+    if (!report.checks.some((check) => check.id === "open")) await recordLayout(job, driver, capture, screen.path);
+    await recordPolicy(job, driver, capture, name, report);
   }
+}
+
+/** 정책 대조 결과 한 줄. 이름은 `정책 점검 · 경로`라야 슬랙 알림·디자인 오류·아침 분석이 읽는다 */
+async function recordPolicy(job: DeviceJob, driver: ScreenDriver, capture: DeviceCapture | null, name: string, report: PolicyScreenReport, note?: string): Promise<void> {
+  const status = hasBugCandidate(report.checks) ? "failed" : "passed";
+  const message = [note, policyMessage(report)].filter(Boolean).join(" · ") || undefined;
+  const bundle = status === "failed" && capture ? await bundleFailure(job, driver, capture, name, { status: "failed", message }) : {};
+  const coverage = report.figmaCoverage === undefined ? {} : { figmaCoverage: report.figmaCoverage };
+  job.outcome.screens.push({ scenario: name, status, message, checks: report.checks, ...coverage, ...bundle });
+  job.deps.onUpdate(job.run);
+}
+
+/** 플로우 「디자인 확인」: 지금 화면의 화면 깨짐을 재고, 피그마·정책이 연결된 화면이면 대조한다. 실패해도 플로우는 이어 간다 */
+async function designStep(job: DeviceJob, driver: ScreenDriver, capture: DeviceCapture | null, flow: FlowDocument, index: number): Promise<void> {
+  const path = normalizePath(await driver.currentPath());
+  await recordLayout(job, driver, capture, path);
+  const screen = job.deps.designScreenFor?.(path) ?? null;
+  const note = `플로우 「${flow.name}」 ${index + 1}단계`;
+  if (!screen || !job.deps.runDesign) {
+    logOf(job.deps)(`${note} 디자인 확인: ${path}에 연결된 피그마·정책이 없어 화면 깨짐만 쟀습니다.`);
+    return;
+  }
+  let report: PolicyScreenReport;
+  try {
+    report = await job.deps.runDesign(driver, screen);
+  } catch (error) {
+    if (isOffline(error)) throw error;
+    report = { path, checks: [], situational: 0, cached: false, judgeError: errorMessage(error) };
+  }
+  await recordPolicy(job, driver, capture, `${policyScenarioPrefix}${path}`, report, note);
 }
 
 /** 스텝 index를 시작했을 때의 진행 패널 목록 */
@@ -354,28 +436,32 @@ function flowStepViews(flow: FlowDocument, running: number): FlowStepView[] {
   }));
 }
 
-async function flowOne(job: DeviceJob, driver: ScreenDriver, flow: FlowDocument): Promise<FlowResult> {
+async function flowOne(job: DeviceJob, driver: ScreenDriver, flow: FlowDocument, capture: DeviceCapture | null): Promise<FlowResult> {
   const onStep = (index: number) => {
     job.outcome.flowSteps = flowStepViews(flow, index);
     job.deps.onUpdate(job.run);
   };
   try {
-    return await (job.deps.runFlow ?? ((target, item, step) => defaultRunFlow(target, item, { onStep: step })))(driver, flow, onStep);
+    const checkDesign = (target: ScreenDriver, index: number) => designStep(job, target, capture, flow, index);
+    return await (job.deps.runFlow ?? ((target, item, step) => defaultRunFlow(target, item, { onStep: step, checkDesign })))(driver, flow, onStep);
   } catch (error) {
     if (isOffline(error)) throw error;
     return { status: "failed", steps: [], message: errorMessage(error) };
   }
 }
 
-/** 확정 플로우를 순서대로. 결과는 화면 결과와 같은 목록에 `플로우 · 이름`으로 남는다. */
+/** 이번에 돌 확정 플로우. `flowIds`가 있으면 그것만 */
+const flowsOf = (request: RunRequest, deps: RunDeps) => (deps.flows ?? []).filter((flow) => !request.flowIds || request.flowIds.includes(flow.id));
+
+/** 확정 플로우를 순서대로. 결과는 화면 결과와 같은 목록에 `플로우 점검 · 이름`으로 남는다. */
 async function runFlows(job: DeviceJob, driver: ScreenDriver, capture: DeviceCapture | null): Promise<void> {
-  for (const flow of job.deps.flows ?? []) {
+  for (const flow of flowsOf(job.request, job.deps)) {
     if (isStopped(job)) return;
     const name = `${flowScenarioPrefix}${flow.name}`;
     job.outcome.phase = "checking";
     job.outcome.current = name;
     job.deps.onUpdate(job.run);
-    const result = await flowOne(job, driver, flow);
+    const result = await flowOne(job, driver, flow, capture);
     delete job.outcome.flowSteps;
     const bundle = result.status === "failed" && capture ? await bundleFailure(job, driver, capture, name, { status: "failed" }) : {};
     job.outcome.screens.push({ scenario: name, status: result.status, message: result.message, steps: result.steps, ...bundle });
@@ -448,7 +534,7 @@ async function testDevice(job: DeviceJob): Promise<void> {
     settle(job, "skipped", stoppedMessage);
     return;
   }
-  if (!job.request.flowsOnly) {
+  if (!job.request.flowsOnly && !job.request.designOnly) {
     const source = installSourceOf(job.deps.app.install, job.device.platform, job.request.kind);
     markPhase(job, source === "testflight" ? "waiting_testflight" : "installing");
     const installed = await installBuild(job);
@@ -469,7 +555,7 @@ async function testDevice(job: DeviceJob): Promise<void> {
     await runScenarios(job, driver, capture);
   } finally {
     await unguard?.().catch((error: unknown) => logOf(job.deps)(`${job.device.id} 버튼 가드 해제 실패: ${errorMessage(error)}`));
-    // 통과한 기기의 링버퍼·프레임은 여기서 버려진다. 남는 것은 run.json뿐이다.
+    // 통과한 기기의 링버퍼·프레임은 여기서 버려진다. 남는 것은 DB 실행 기록뿐이다.
     await stopCapture(job, capture);
     // 연결이 끊긴 뒤의 close 실패는 이미 offline으로 남으므로 결과를 바꾸지 않는다.
     await driver.close().catch(() => undefined);
@@ -526,7 +612,10 @@ export async function runDevices(request: RunRequest, deps: RunDeps): Promise<De
     kind: request.kind,
     version: request.version,
     trigger: request.trigger ?? "manual",
-    scenarioCount: (request.flowsOnly ? 0 : deps.scenarios.length) + (deps.flows?.length ?? 0) + qaScreensOf(deps).length,
+    ...(request.label ? { label: request.label } : {}),
+    scenarioCount: request.designOnly
+      ? designScreensOf(request, deps).length
+      : (request.flowsOnly ? 0 : deps.scenarios.length) + flowsOf(request, deps).length + (request.flowsOnly ? 0 : qaScreensOf(deps).length),
     startedAt: new Date(startedAt).toISOString(),
     finishedAt: null,
     outcomes: devices.map((device) => ({ device, status: "running", screens: [] })),

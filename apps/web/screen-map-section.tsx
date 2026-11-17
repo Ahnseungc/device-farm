@@ -4,11 +4,13 @@ import { HStack, Text } from "@seed-design/react";
 import type { MapEdge, MapEdgeKind } from "@device-farm/core/device/screen-map";
 
 import { api, usePoll } from "./api-client";
+import { MetaLine } from "./meta-line";
 import { Badge, type BadgeProps } from "./seed-design/ui/badge";
 import { Callout } from "./seed-design/ui/callout";
 import { useAppConfig } from "./app-context";
 import { t } from "./i18n";
 import { buildScreenTree, type ScreenNode } from "./screen-map-tree";
+import "./baselines.css";
 import "./screen-map.css";
 
 /** 카드 안에 개수로만 보이는 간선(다른 화면으로 가지 않는 것) */
@@ -52,7 +54,14 @@ function ScreenCard({ node, title }: { node: ScreenNode; title?: string }) {
           {leaves.map((edge) => (
             <li key={`${edge.role}:${edge.name}`}>
               <Text textStyle="t2Regular">
-                {`${kindLabel(edge.kind)} · ${roleLabel(edge.role)} ${quoted(edge.name)}${edge.texts ? ` → ${edge.texts[0]}` : ""}${edge.message && edge.kind === "error" ? ` (${edge.message})` : ""}`}
+                <MetaLine
+                  items={[
+                    kindLabel(edge.kind),
+                    `${roleLabel(edge.role)} ${quoted(edge.name)}`,
+                    edge.texts ? t(`뜬 문구 「${edge.texts[0]}」`, `Shown text “${edge.texts[0]}”`) : null,
+                    edge.message && edge.kind === "error" ? edge.message : null,
+                  ]}
+                />
               </Text>
             </li>
           ))}
@@ -109,7 +118,7 @@ export function ScreenMapSection() {
   return (
     <section className="baselines-card" aria-label={t("화면 지도", "Screen map")}>
       <Text as="h3" textStyle="t4Bold">
-        {t(`화면 지도 · 화면 ${screenCount}개`, `Screen map · ${screenCount} screens`)}
+        {t(`화면 지도(화면 ${screenCount}개)`, `Screen map (${screenCount} screens)`)}
       </Text>
       <Text textStyle="t3Regular" color="fg.neutralSubtle">
         {t(

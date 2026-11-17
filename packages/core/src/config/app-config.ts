@@ -28,8 +28,13 @@ export interface AllowedRequest {
 export interface AppNavigation {
   /** 홈 탭을 누르면 도착하는 경로. 플로우의 시작점 */
   homePath: string;
-  /** 하단 탭바(웹 링크)의 홈 탭 이름 */
+  /** 하단 탭바(웹 링크)의 홈 탭 이름. 플로우·화면 지도가 홈 탭을 부르는 이름이다 */
   homeTabName: string;
+  /**
+   * 홈 탭에 실제로 적힌 글자들. 웹 배포마다 다를 때(예: dev만 짧은 이름) 넣는다. 앞에서부터 찾는다.
+   * 홈 탭 이름으로 누르면 이 중 화면에 있는 것을 누른다. 비면 `[homeTabName]`
+   */
+  homeTabLabels?: string[];
   /** 하단 탭 이름 → 도착 경로. 홈 탭을 포함한다 */
   tabPaths: Record<string, string>;
   /** 앱 화면 상단 뒤로 버튼 이름(aria-label 등) */
@@ -81,6 +86,12 @@ export interface InstallConfig {
   testflightDevAppName?: string;
 }
 
+/** 처음 한 번만 뜨는 안내 화면(온보딩)과 넘기는 버튼 */
+export interface IntroScreen {
+  path: string;
+  button: string;
+}
+
 export interface AppConfig extends AppNavigation {
   name: string;
   /** 디바이스팜 화면 언어. 기본 "ko". 환경 변수 `FARM_LOCALE`이 있으면 그것이 이긴다 */
@@ -107,10 +118,17 @@ export interface AppConfig extends AppNavigation {
     stackResetScript?: string;
     /** 탭 화면에 뜬 바텀시트·팝업 닫기 버튼 이름 */
     sheetCloseName: string;
+    /** 화면 전체를 덮어 스택 닫기·시트 닫기·뒤로로 안 닫히는 창(상담 채팅 메신저 등)을 닫는 페이지 스크립트. 홈으로 갈 때 보낸다. 비면 안 한다 */
+    overlayCloseScript?: string;
   };
   guard: GuardConfig;
   /** 고정 주소 화면 점검 목록 */
   scenarios: ScreenScenario[];
+  /**
+   * 처음 한 번만 뜨는 안내 화면. 앱을 새로 깔면 같은 계정이어도 다시 떠, 플로우가 누른 뒤 이 경로면 버튼을 눌러 넘긴다.
+   * 플로우가 그 버튼을 직접 누르면 넘기지 않는다. 비면 넘기지 않는다
+   */
+  introScreens: IntroScreen[];
   /** 앞 단계가 있어야 의미 있는 화면(완료·중간 단계). 점검에서 뺀다 */
   excludedScenarioPaths: string[];
   /** 화면 데이터 QA. `sessionPath`는 로그인 세션(`{ user: { id, accessToken } }`)을 주는 웹 경로 */
@@ -190,13 +208,18 @@ export function defineAppConfig(input: AppConfigInput): AppConfig {
     apiOrigin: input.apiOrigin ?? "",
     homePath: input.homePath,
     homeTabName: input.homeTabName,
+    homeTabLabels: input.homeTabLabels ?? [input.homeTabName],
     tabPaths: { [input.homeTabName]: input.homePath, ...input.tabPaths },
     inPageBackNames: input.inPageBackNames ?? [...defaultInPageBackNames],
     loginPaths: input.loginPaths ?? [...defaultLoginPaths],
     appErrorText: input.appErrorText ?? defaultAppErrorText,
     deepLink: { scheme: input.deepLink?.scheme ?? "", homeHost: input.deepLink?.homeHost ?? "home" },
     android: { mainActivity: input.android?.mainActivity },
-    webview: { stackResetScript: input.webview?.stackResetScript, sheetCloseName: input.webview?.sheetCloseName ?? "닫기" },
+    webview: {
+      stackResetScript: input.webview?.stackResetScript,
+      sheetCloseName: input.webview?.sheetCloseName ?? "닫기",
+      overlayCloseScript: input.webview?.overlayCloseScript,
+    },
     guard: {
       forbiddenButtonWords: [...defaultForbiddenButtonWords, ...(guard.extraForbiddenButtonWords ?? [])],
       forbiddenClickNames: [...defaultForbiddenClickNames, ...(guard.extraForbiddenClickNames ?? [])],
@@ -207,6 +230,7 @@ export function defineAppConfig(input: AppConfigInput): AppConfig {
     },
     scenarios: (input.scenarios as ScreenScenario[] | undefined) ?? [],
     excludedScenarioPaths: input.excludedScenarioPaths ?? [],
+    introScreens: (input.introScreens as IntroScreen[] | undefined) ?? [],
     qa: { screens: (input.qa?.screens as QaScreen[] | undefined) ?? [], sessionPath: input.qa?.sessionPath ?? "/api/auth/session" },
     policy: { confluence: input.policy?.confluence as ConfluencePolicySource | undefined },
     figma: { frontRepo: input.figma?.frontRepo, ref: input.figma?.ref ?? "origin/main", appDir: input.figma?.appDir ?? "app" },
@@ -239,6 +263,7 @@ export function publicAppConfig(app: AppConfig): PublicAppConfig {
     locale: app.locale ?? defaultFarmLocale,
     homePath: app.homePath,
     homeTabName: app.homeTabName,
+    homeTabLabels: app.homeTabLabels,
     tabPaths: app.tabPaths,
     inPageBackNames: app.inPageBackNames,
     forbiddenClickNames: app.guard.forbiddenClickNames,
@@ -248,4 +273,14 @@ export function publicAppConfig(app: AppConfig): PublicAppConfig {
 /** 하단 탭 이름. 홈 탭이 맨 앞 */
 export function tabNamesOf(nav: Pick<AppNavigation, "homeTabName" | "tabPaths">): string[] {
   return [nav.homeTabName, ...Object.keys(nav.tabPaths).filter((name) => name !== nav.homeTabName)];
+}
+
+/** 홈 탭에 적힐 수 있는 글자들. 없으면 홈 탭 이름 하나 */
+export function homeTabLabelsOf(nav: Pick<AppNavigation, "homeTabName" | "homeTabLabels">): readonly string[] {
+  return nav.homeTabLabels && nav.homeTabLabels.length > 0 ? nav.homeTabLabels : [nav.homeTabName];
+}
+
+/** 하단 탭 링크 이름인가. 홈 탭은 웹에 적힌 다른 글자(`homeTabLabels`)도 탭이다 */
+export function isTabName(nav: Pick<AppNavigation, "tabPaths"> & Partial<Pick<AppNavigation, "homeTabName" | "homeTabLabels">>, name: string): boolean {
+  return Object.hasOwn(nav.tabPaths, name) || name === nav.homeTabName || (nav.homeTabLabels ?? []).includes(name);
 }

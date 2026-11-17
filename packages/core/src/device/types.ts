@@ -34,6 +34,8 @@ export interface DeviceScreen {
   buttons?: ButtonResult[];
   /** 데이터 QA 결과면 규칙별 통과 여부 */
   checks?: QaCheck[];
+  /** 디자인(정책) 점검이면 화면 문구 중 피그마에 있는 비율 0~1. 피그마가 없는 화면은 없다 */
+  figmaCoverage?: number;
 }
 
 /** 실행 중(`running`)일 때 지금 하는 일. 끝나면 지운다. */
@@ -61,10 +63,13 @@ export interface DeviceRun {
   outcomes: DeviceOutcome[];
   /** 기기마다 돌 시나리오 수. 진행률 분모 */
   scenarioCount?: number;
+  /** CLI에서 돌린 점검 이름(「정책 점검」·「화면 깨짐 점검」). 플로팅 제목에 쓴다 */
+  label?: string;
 }
 
 export type LogSource = "console" | "network" | "system" | "crash";
-export type LogEntry = { at: number; source: LogSource; text: string };
+/** page: 로그를 낸 화면 경로. 늦게 온 로그도 그 화면에 붙이려고 수집할 때 적는다(Android WebView만) */
+export type LogEntry = { at: number; source: LogSource; text: string; page?: string };
 
 export const deviceConcurrency = 2;
 
