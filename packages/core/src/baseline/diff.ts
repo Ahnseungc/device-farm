@@ -43,10 +43,13 @@ export function buildMask(images: readonly RgbaImage[]): Uint8Array {
   return mask;
 }
 
-export function compareImages(current: RgbaImage, baseline: RgbaImage, mask: Uint8Array | null): CompareResult {
-  if (current.width !== baseline.width || current.height !== baseline.height) {
-    return { pass: false, message: sizeMessage };
-  }
+/** 바뀐 픽셀 비율(마스크 밖). 크기가 다르면 null. 디바이스팜에서 더함 */
+export function diffRatio(current: RgbaImage, baseline: RgbaImage, mask: Uint8Array | null): number | null {
+  if (current.width !== baseline.width || current.height !== baseline.height) return null;
+  return countRatio(current, baseline, mask);
+}
+
+function countRatio(current: RgbaImage, baseline: RgbaImage, mask: Uint8Array | null): number {
   const count = current.width * current.height;
   const useMask = mask != null && mask.length === count;
   let compared = 0;
@@ -56,7 +59,14 @@ export function compareImages(current: RgbaImage, baseline: RgbaImage, mask: Uin
     compared += 1;
     if (channelsDiffer(current.data, baseline.data, index * 4)) changed += 1;
   }
-  const ratio = compared === 0 ? 0 : changed / compared;
+  return compared === 0 ? 0 : changed / compared;
+}
+
+export function compareImages(current: RgbaImage, baseline: RgbaImage, mask: Uint8Array | null): CompareResult {
+  if (current.width !== baseline.width || current.height !== baseline.height) {
+    return { pass: false, message: sizeMessage };
+  }
+  const ratio = countRatio(current, baseline, mask);
   if (ratio > failRatio) return { pass: false, message: diffMessage };
   return { pass: true, ratio };
 }

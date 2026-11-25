@@ -160,3 +160,48 @@
     animation-duration: 0.01s;
   }
 }
+
+/* 대기열: 진행 중 아래. 번호 · 이름 · 「빼기」 */
+.activity-queue {
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x1);
+  padding-top: var(--seed-dimension-x2);
+  border-top: 1px solid var(--seed-color-stroke-neutral-muted);
+}
+
+.activity-queue-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--seed-dimension-x1);
+  max-height: 240px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.activity-queue-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--seed-dimension-x2);
+  padding: var(--seed-dimension-x1) var(--seed-dimension-x2);
+}
+
+.activity-queue-order {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--seed-radius-full);
+  background: var(--seed-color-bg-neutral-weak);
+  color: var(--seed-color-fg-neutral-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.activity-queue-item .activity-stop {
+  margin-top: 0;
+}

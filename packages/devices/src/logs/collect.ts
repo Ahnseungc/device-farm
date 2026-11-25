@@ -2,7 +2,7 @@ import { spawn, type ChildProcessByStdio } from "node:child_process";
 import { createInterface } from "node:readline";
 import type { Readable } from "node:stream";
 
-import type { ConsoleMessage, Request, Response } from "playwright";
+import type { BrowserContext, ConsoleMessage, Request, Response } from "playwright";
 
 import type { ScreenDriver } from "@device-farm/core/device/driver";
 import type { Device, LogEntry } from "@device-farm/core/device/types";
@@ -167,9 +167,13 @@ function requestOrigin(request: Request): string | undefined {
   return originPath({ referer: request.headers().referer, pageUrl, navigation: request.isNavigationRequest() });
 }
 
-function watchPage(driver: AndroidScreenDriver, ring: LogRing): Stop {
+function watchPage(driver: AndroidScreenDriver, ring: LogRing): Promise<Stop> {
+  // 앱을 다시 켜 다시 붙어도 이어서 받는다
+  return driver.attachContext(async (context) => watchContext(context, ring));
+}
+
+function watchContext(page: BrowserContext, ring: LogRing): Stop {
   // 스택마다 WebView(페이지)가 새로 생긴다. context에 걸어 전부 받는다.
-  const page = driver.context;
   const push = (entry: LogLine | null) => entry && ring.push(entry);
   const onConsole = (message: ConsoleMessage) =>
     push(consoleToEntry(message.type(), message.text(), originPath({ pageUrl: message.page()?.url(), navigation: false })));
@@ -198,7 +202,7 @@ async function startAndroid(device: Device, appId: string, driver: ScreenDriver,
   const pid = await appPid(device.id, appId, deps.exec ?? execFileText);
   const spawnProcess = deps.spawnProcess ?? defaultSpawn;
   const stops = [pipeLines(spawnProcess("adb", ["-s", device.id, "logcat", `--pid=${pid}`]), ring, logcatLineToEntry, "logcat")];
-  if (isAndroidDriver(driver)) stops.push(watchPage(driver, ring));
+  if (isAndroidDriver(driver)) stops.push(await watchPage(driver, ring));
   return stops;
 }
 

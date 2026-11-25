@@ -84,4 +84,10 @@ const drawn: ScreenState = { ready: "complete", path: "/alarm", text: 120, image
   assert.deepEqual(result, { ok: false, message: "이동 실패: 앱이 /alarm를 열지 않아 /home에 머물렀습니다." });
 }
 
+// 페이지는 비고 화면을 덮는 iframe(상담 채팅 문의 /help/inquiry)이 그리면 그려진 것
+{
+  const messenger: ScreenState = { ready: "complete", path: "/help/inquiry", text: 0, images: 0, frames: 1 };
+  assert.deepEqual(await waitForScreen(driverWith([messenger, messenger]), "/help/inquiry", fakeClock()), { ok: true });
+}
+
 console.log("screen-ready ok");

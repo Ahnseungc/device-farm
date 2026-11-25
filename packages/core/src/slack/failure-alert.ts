@@ -3,6 +3,7 @@
  * 정책 점검 불일치는 policy-alert.ts가 맡는다. 기준 화면 차이·로그인 필요는 보내지 않는다.
  */
 
+import { errorCauseLabel } from "../device/button-check";
 import type { DeviceOutcome, DeviceRun, DeviceScreen } from "../device/types";
 import { alertActionBlocks, fixPrContext } from "./fix-pr";
 import { plainError } from "./plain-error";
@@ -49,8 +50,50 @@ export function failureTypeOf(screen: DeviceScreen): FailureType | null {
   return "app-error";
 }
 
-/** 숫자·시각은 지워 같은 실패를 같은 키로 본다 */
-const stableMessage = (message: string) => message.replace(/\d[\d,.:]*/g, "#").slice(0, 120);
+/** 요청 줄(`GET 404 https://…`)의 상태 코드 바로 앞 */
+const beforeHttpStatus = /\b(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|UNKNOWN) $/;
+
+/** 숫자·시각은 지워 같은 실패를 같은 키로 본다. 요청 상태 코드는 남긴다 — 404를 넘겼다고 500까지 넘기면 안 된다 */
+const stableMessage = (message: string) =>
+  message.replace(/\d[\d,.:]*/g, (digits: string, offset: number) => (beforeHttpStatus.test(message.slice(0, offset)) ? digits : "#")).slice(0, 120);
+
+/** 기준 학습 앞머리(`packages/engine/src/check.ts`). 학습이 끝나면 빠져 무시 키가 어긋났다 */
+const baselineLearningNote = /기준 학습 중\([^)]*\): 바뀌는 곳을 비교에서 뺐습니다\.(?: · )?/g;
+
+/**
+ * 무시 키가 보는 실패 문구. 버튼 에러는 원인(`에러 원인: …`)만 본다 —
+ * 버튼 이름에 알림 본문처럼 매일 바뀌는 글이 들어가 「문제 아님」이 다음 점검에 안 맞았다.
+ */
+function ignoreSubject(message: string): string {
+  const cause = message.indexOf(errorCauseLabel);
+  if (cause >= 0) return message.slice(cause);
+  return message.replace(baselineLearningNote, "");
+}
+
+/** 실패 알림 「문제 아님」의 무시 목록 키·해시. 빌드 종류(dev·prod)와 상관없이 같은 화면·같은 실패면 넘긴다 */
+export const failureIgnoreHash = "failure";
+export const failureIgnoreKey = (scenario: string, message: string) => `failure|${scenario}|${stableMessage(ignoreSubject(message))}`;
+
+/** 「문제 아님」으로 넘긴 실패의 사유 앞머리 */
+export const notIssuePrefix = "문제 아님으로 넘김";
+
+/**
+ * 슬랙 실패 알림에서 「문제 아님」을 누른 실패(같은 화면·같은 실패 문구)는 통과로 바꾼다.
+ * 기기 결과·끝 알림·실패 알림 모두 이걸 기준으로 센다. 바꾼 수를 돌려준다.
+ */
+export function skipIgnoredFailures(screens: DeviceScreen[], ignores: readonly { key: string; hash: string; reason: string }[]): number {
+  const reasonOf = new Map(ignores.filter((item) => item.hash === failureIgnoreHash).map((item) => [item.key, item.reason]));
+  let count = 0;
+  for (const screen of screens) {
+    if (screen.status !== "failed") continue;
+    const reason = reasonOf.get(failureIgnoreKey(screen.scenario, screen.message ?? ""));
+    if (!reason) continue;
+    screen.status = "passed";
+    screen.message = `${notIssuePrefix}(${reason}): ${screen.message ?? ""}`;
+    count += 1;
+  }
+  return count;
+}
 
 export function failureAlertOf(run: DeviceRun, outcome: DeviceOutcome, screen: DeviceScreen): FailureAlert | null {
   const finding = failureTypeOf(screen);

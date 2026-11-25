@@ -15,14 +15,14 @@ import {
 
 const pollIntervalMs = 2000;
 
-async function startExplore(port: number, body: object): Promise<string> {
+async function startExplore(port: number, body: object): Promise<{ runId: string; position: number }> {
   const result = await requestJson(port, "/api/devices/explore", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
   if (!isRecord(result) || typeof result.runId !== "string") throw new CliError("디바이스팜 서버가 runId를 주지 않았습니다.");
-  return result.runId;
+  return { runId: result.runId, position: typeof result.position === "number" ? result.position : 0 };
 }
 
 /** 서버 계약상 `ExploreRun[]`. 이 요청의 runId만 남긴다. */
@@ -52,8 +52,8 @@ async function main(): Promise<number> {
   const args = parseExploreArgs(process.argv.slice(2));
   if (!args.ok) throw new CliError(args.error);
   const { devices, port, build } = args.value;
-  const runId = await startExplore(port, build ? { devices, build } : { devices });
-  console.log(`탐색 시작 (${runId})`);
+  const { runId, position } = await startExplore(port, build ? { devices, build } : { devices });
+  console.log(position > 0 ? `탐색 대기 ${position}번째 (${runId})` : `탐색 시작 (${runId})`);
   const runs = await followExplore(port, runId);
   console.log(formatExploreSummary(summarizeExplore(runs)));
   const code = exploreExitCode(runs);

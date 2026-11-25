@@ -9,14 +9,14 @@ import type { PrintedState } from "./format";
 
 const pollIntervalMs = 2000;
 
-async function startRun(port: number, body: object): Promise<string> {
+async function startRun(port: number, body: object): Promise<{ runId: string; position: number }> {
   const result = await requestJson(port, "/api/devices/run", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
   if (!isRecord(result) || typeof result.runId !== "string") throw new CliError("디바이스팜 서버가 runId를 주지 않았습니다.");
-  return result.runId;
+  return { runId: result.runId, position: typeof result.position === "number" ? result.position : 0 };
 }
 
 /** 서버 계약상 `DeviceRun | null`. runId만 확인하고 나머지는 서버를 믿는다. */
@@ -43,8 +43,9 @@ async function main(): Promise<number> {
   const args = parseRunArgs(process.argv.slice(2));
   if (!args.ok) throw new CliError(args.error);
   const { kind, version, devices, port } = args.value;
-  const runId = await startRun(port, { kind, version, devices });
-  console.log(`기기 점검 시작 (${runId}) · ${kind} ${version}`);
+  const { runId, position } = await startRun(port, { kind, version, devices });
+  // 다른 점검이 돌고 있으면 서버 대기열에 들어간다. 차례가 오면 아래 followRun이 따라간다
+  console.log(position > 0 ? `기기 점검 대기 ${position}번째 (${runId}) · ${kind} ${version}` : `기기 점검 시작 (${runId}) · ${kind} ${version}`);
   const run = await followRun(port, runId);
   if (run.outcomes.length === 0) console.log(noDevicesMessage);
   const code = runExitCode(run);

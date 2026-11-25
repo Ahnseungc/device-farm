@@ -90,14 +90,18 @@ const domHelpers = `
 export interface ActionCandidate {
   role: "button" | "link" | "input";
   name: string;
+  /** 이미 고른 탭·라디오, 지금 화면을 가리키는 링크. 눌러도 안 바뀌는 게 맞다 */
+  selected?: boolean;
 }
 
 /** `pressable`: 지금 사람이 누를 수 있는가(가려지지 않음). 같은 이름이 여럿이면 하나라도 누를 수 있으면 true */
 export const listActionsScript = `(() => {${domHelpers}
   const modal = openModal();
+  const isSelected = (el) => el.getAttribute("aria-selected") === "true" || (el.getAttribute("aria-current") || "false") !== "false" || (el.getAttribute("role") === "radio" && el.getAttribute("aria-checked") === "true");
+  const isHere = (el) => { try { return Boolean(el.href) && new URL(el.href).pathname === location.pathname; } catch { return false; } };
   return [
-    ...buttons().map((el) => ({ role: "button", name: nameOf(el), pressable: !isCovered(el, modal) })),
-    ...links().map((el) => ({ role: "link", name: nameOf(el), pressable: !isCovered(el, modal) })),
+    ...buttons().map((el) => ({ role: "button", name: nameOf(el), pressable: !isCovered(el, modal), selected: isSelected(el) })),
+    ...links().map((el) => ({ role: "link", name: nameOf(el), pressable: !isCovered(el, modal), selected: isSelected(el) || isHere(el) })),
     ...inputs().map((el) => ({ role: "input", name: labelOf(el), pressable: !isCovered(el, modal), numeric: ["number", "tel"].includes((el.getAttribute("type") || "").toLowerCase()) || ["numeric", "decimal", "tel"].includes(el.inputMode) })),
   ].filter((item) => item.name.length > 0);
 })()`;

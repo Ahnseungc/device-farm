@@ -10,6 +10,7 @@ import { FloatingNotice } from "./floating-notice";
 import { dateLocale, t } from "./i18n";
 import { dailyKindLabel, issueKindLabel } from "./issue-labels";
 import { MetaLine } from "./meta-line";
+import { startedText } from "./activity-model";
 import { StaggeredEntrance, StaggeredEntranceItem } from "./motion/StaggeredEntrance";
 import { ActionButton } from "./seed-design/ui/action-button";
 import { Badge } from "./seed-design/ui/badge";
@@ -36,11 +37,10 @@ function QuickActions({ onOpenDevices }: { onOpenDevices: () => void }) {
     setBusy(kind);
     setMessage(null);
     try {
-      if (kind === "flows") await api.startRun({ kind: "dev", devices: "all", flowsOnly: true });
-      else await api.startBot();
-      setMessage({ text: kind === "flows"
+      const { position } = kind === "flows" ? await api.startRun({ kind: "dev", devices: "all", flowsOnly: true }) : await api.startBot();
+      setMessage({ text: startedText(position, kind === "flows"
           ? t("플로우 점검을 시작했어요. 오른쪽 아래에서 진행을 볼 수 있어요.", "Flow check started. Track progress in the bottom right.")
-          : t("봇 점검을 시작했어요(기기마다 30분).", "Bot check started (30 minutes per device)."), error: false });
+          : t("봇 점검을 시작했어요(기기마다 30분).", "Bot check started (30 minutes per device).")), error: false });
     } catch (error) {
       setMessage({ text: errorMessage(error), error: true });
     } finally {

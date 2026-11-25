@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { PNG } from "pngjs";
 
-import { buildMask, compareImages, type CompareResult, type RgbaImage } from "@device-farm/core/baseline/diff";
+import { buildMask, compareImages, diffRatio, type CompareResult, type RgbaImage } from "@device-farm/core/baseline/diff";
 
 export const baselinesRoot = path.resolve("test-results/baselines");
 export const archiveLimit = 5;
@@ -155,4 +155,35 @@ export function confirmPending(root = baselinesRoot): number {
     if (confirmScenario(name, root)) confirmed += 1;
   }
   return confirmed;
+}
+
+// ---- 디바이스팜에서 더함: 확정 뒤 첫 몇 번은 바뀌는 곳을 배운다 ----
+
+/** 기준의 보관 장수(확정한 1장 + 배운 장). 기준이 없으면 0 */
+export function sampleCount(name: string, root = baselinesRoot): number {
+  return archiveFiles(path.join(scenarioDir(root, name), "archive")).length;
+}
+
+/** 마스크 밖 바뀐 비율. 크기가 다르면 null */
+export function baselineDiffRatio(name: string, png: Buffer, root = baselinesRoot): number | null {
+  const dir = scenarioDir(root, name);
+  const current = PNG.sync.read(png);
+  const baseline = readPng(path.join(dir, "baseline.png"));
+  const mask = readMask(path.join(dir, "mask.png"), baseline.width, baseline.height);
+  return diffRatio({ width: current.width, height: current.height, data: current.data }, baseline, mask);
+}
+
+/** 이번 화면을 보관에 더하고 마스크를 다시 만든다(장끼리 다른 픽셀은 비교에서 빠진다). 기준 그림은 그대로다 */
+export function learnSample(name: string, png: Buffer, root = baselinesRoot): void {
+  const dir = scenarioDir(root, name);
+  const archive = path.join(dir, "archive");
+  mkdirSync(archive, { recursive: true });
+  const next = (archiveFiles(archive).at(-1)?.index ?? 0) + 1;
+  writeFileSync(path.join(archive, `${String(next).padStart(4, "0")}.png`), png);
+  const files = archiveFiles(archive);
+  while (files.length > archiveLimit) {
+    const oldest = files.shift();
+    if (oldest) unlinkSync(oldest.file);
+  }
+  rebuildMask(dir);
 }

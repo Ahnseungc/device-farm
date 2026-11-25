@@ -29,7 +29,9 @@ Android는 adb + Chrome DevTools Protocol(Playwright), iOS는 Appium(XCUITest·W
 - **탐색·봇 점검**: 너비 우선 탐색과 시드 고정 봇(누르기·입력칸 채우기·뒤로·연타·로딩 중 뒤로·백그라운드·다른 앱 다녀오기·재시작). 깊은 화면에서 시작하고 오류를 원인별로 묶는다.
 - **화면 깨짐·디자인 점검**: 넘침·잘림·겹침·하단 잘림·빈 화면을 재고, 화면마다 연결된 피그마 페이지와 일치율을 본다. 플로우에 「디자인 확인」 스텝을 넣을 수 있다.
 - **정책·피그마 대조**: Confluence 정책 바뀜 감지, 규칙 뽑기, 피그마 문구 대조.
-- **기록·알림·일정**: 실행 기록을 SQLite(`farm.db`)에 쌓고, 진행 중 점검을 플로팅에 띄워 점검마다 중지한다. 슬랙 알림·끝 요약·야간 점검·아침 Claude 요약은 env로 켠다.
+- **기록·알림·일정**: 실행 기록을 SQLite(`farm.db`)에 쌓고, 진행 중 점검을 플로팅에 띄워 점검마다 중지한다. 점검은 대기열 하나에서 차례로 돈다. 슬랙 알림·끝 요약·예약 점검(3시간마다)·아침 Claude 요약은 env로 켠다.
+- **오탐 줄이기**: 팝업은 남기고 닫고, 네트워크·502 화면은 풀릴 때까지 기다리고, 실패는 한 번 다시 돌린다. 기기·서버 탓이면 앱 실패 대신 「점검 못 함」으로 남긴다.
+- **슬랙 QA 제보**(선택): QA 채널에 태그한 제보를 Claude가 플로우로 바꿔 기기에서 돌리고 스레드에 답한다.
 - **원격 조작**: 웹 화면에서 기기 화면을 보며(Android H.264, iOS MJPEG) 직접 누른다. 조작 중인 기기는 잠근다.
 - **Claude Code MCP**: Claude가 MCP 도구로 기기를 탐색하고, 찾은 경로를 플로우 후보로 올린다.
 
@@ -148,8 +150,14 @@ export default defineAppConfig({
 | `inPageBackNames`           | 화면 상단 뒤로 버튼 이름. 기본 `["뒤로가기", "Back"]`                                                                                                                          |
 | `loginPaths`·`appErrorText` | 로그인 화면 경로, 앱 오류 문구. 기본 `["/login"]`, `"Application error"`                                                                                                        |
 | `android.mainActivity`      | WebView 액티비티. 다른 네이티브 화면이 위에 있으면 뒤로 키로 닫는다                                                                                                            |
+| `uncheckedPathPrefixes`     | 어떤 점검에도 넣지 않는 경로 앞머리(개발용 화면, 접은 서비스) |
+| `android.notificationAppLabel`·`android.devOverlay` | 알림 권한을 허용할 앱 이름, 누르지 않을 개발용 칩·미리보기 |
+| `popups`                    | `extraCloseNames`(닫기 버튼 이름 더하기), `resultTitles`(닫지 않고 멈출 결과 팝업) |
+| `ads`                       | `balancePattern`(`watchAd`가 읽을 위쪽 잔액 정규식), `disabledText`(버튼이 꺼졌을 때 문구) |
+| `login.kakao`               | 로그아웃되면 기기에 저장된 카카오 계정으로 다시 로그인(기본 꺼짐, 비밀번호는 넣지 않음) |
+| `qaReport`                  | `promptRules`·`opinionRules` 슬랙 QA 제보에 쓸 앱 규칙 |
 | `webview`                   | `stackResetScript`(WebView 스택 닫기 브리지), `sheetCloseName`(시트 닫기 버튼)                                                                                                 |
-| `guard`                     | `extraForbiddenButtonWords`·`extraForbiddenClickNames`·`extraForbiddenApiPatterns`, `pushTokenRequests`, 누르지 않을 `avoidedNamePattern`·`noPressPathPattern`                  |
+| `guard`                     | `extraForbiddenButtonWords`·`extraForbiddenClickNames`·`extraForbiddenApiPatterns`, `pushTokenRequests`, `harmlessBlockedPatterns`, 누르지 않을 `avoidedNamePattern`·`noPressPathPattern`                  |
 | `qa`                        | `{ screens, sessionPath }` 데이터 QA 화면·규칙, 로그인 세션 경로                                                                                                               |
 | `policy.confluence`         | `{ cloudId, spaceKey, titleQuery, siteUrl }` 정책 정본                                                                                                                         |
 | `figma`                     | `{ frontRepo, ref, appDir }` 화면 → 피그마 노드를 뽑을 프론트 체크아웃                                                                                                         |

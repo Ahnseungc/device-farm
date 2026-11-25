@@ -1,3 +1,4 @@
+import { stepsOf as stepsOfForRelaunch } from "./schema";
 import assert from "node:assert/strict";
 
 import type { MapEdge } from "../device/screen-map";
@@ -73,3 +74,10 @@ assert.equal(mapFlowError(edges, [click("혜택", "link")]), "문구 확인 블�
 assert.equal(mapFlowError(edges, [expect("적립 내역")]), "누르는 블록이 없습니다.");
 
 console.log("map-flow ok");
+
+// 앱 다시 켜기 스텝: 플로우로는 쓸 수 있고, 화면 지도로는 이어 붙이지 않는다
+{
+  const steps = stepsOfForRelaunch([{ type: "relaunch" }, { type: "click", target: { role: "button", name: "이벤트 배너" } }, { type: "expectText", text: "나의 초대 코드" }], sampleApp.guard.forbiddenClickNames);
+  assert.ok(Array.isArray(steps));
+  assert.deepEqual(steps[0], { type: "relaunch" });
+}

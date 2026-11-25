@@ -83,6 +83,21 @@ export const exploreActivities = (runs: ExploreRun[] | undefined): Activity[] =>
     .filter(isLive)
     .map((run): Activity => ({ id: `explore:${run.runId}`, title: t("탐색", "Explore"), detail: t(`경로 ${run.paths.length}개 · 이상 ${run.issues.length}개`, `${plural(run.paths.length, "path")} · ${plural(run.issues.length, "issue")}`), tab: "explore", stop: "explore" }));
 
+/** 시작 버튼 뒤 안내. 대기열에 들어갔으면 몇 번째인지 */
+export const startedText = (position: number, started: string): string =>
+  position > 0 ? t(`대기열 ${position}번째에 넣었어요. 앞의 작업이 끝나면 차례로 돌아요.`, `Queued at position ${position}. It runs when the jobs ahead finish.`) : started;
+
+type QueueSource = "manual" | "nightly" | "auto" | "fix";
+const sourceLabel = (source: QueueSource) =>
+  ({ manual: t("직접", "Manual"), nightly: t("예약", "Scheduled"), auto: t("새 빌드", "New build"), fix: t("슬랙 수정", "Slack fix") })[source];
+
+/** 플로팅 「대기」 한 줄의 둘째 줄: 누가 넣었는지 · 넣은 시각 */
+export function queuedDetail(job: { source: QueueSource; queuedAt: string }): string {
+  const at = new Date(job.queuedAt);
+  const time = `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
+  return t(`${sourceLabel(job.source)} · ${time}에 넣음`, `${sourceLabel(job.source)} · queued at ${time}`);
+}
+
 /** 끝난 작업의 결과 한 줄. 폴링 값이 끝난 상태로 바뀐 뒤에 부른다 */
 export function finishedToast(id: string, sources: { run?: DeviceRun | null; policy?: PolicyWatchState | null; bots?: ChaosRunSummary[]; explores?: ExploreRun[] }): Omit<DoneToast, "key"> {
   if (id.startsWith("run:") && sources.run) {

@@ -4,6 +4,7 @@
 import { appIdFor, type AppConfig } from "@device-farm/core/config/app-config";
 import type { DeviceRun } from "@device-farm/core/device/types";
 import { hasBugCandidate } from "@device-farm/core/policy/compare";
+import { sameMeaningLabel } from "@device-farm/core/policy/judge";
 import { findingLabels } from "@device-farm/core/policy/rules";
 import { execFileText } from "@device-farm/devices/exec";
 import { listDevices } from "@device-farm/devices/registry";
@@ -61,7 +62,10 @@ async function main(): Promise<void> {
         console.log(`  ${check.finding ? findingLabels[check.finding] : "피그마 차이"}${check.ignored ? "(무시)" : ""} ${check.title} — ${check.message ?? ""}`);
         if (check.finding === "bug-candidate" && !check.ignored) bugs += 1;
       }
-      console.log(`  통과 ${report.checks.filter((item) => item.ok && !item.message).length}개 · 판단 불가 ${report.checks.filter((item) => item.ok && item.message).length}개 · 상황 필요 ${report.situational}개`);
+      const reworded = report.checks.filter((item) => item.ok && item.message?.startsWith(sameMeaningLabel));
+      for (const check of reworded) console.log(`  ${check.title} — ${check.message}`);
+      const unknown = report.checks.filter((item) => item.ok && item.message && !item.message.startsWith(sameMeaningLabel)).length;
+      console.log(`  통과 ${report.checks.filter((item) => item.ok && !item.message).length}개 · ${sameMeaningLabel} ${reworded.length}개 · 판단 불가 ${unknown}개 · 상황 필요 ${report.situational}개`);
     }
   } finally {
     await driver.close();

@@ -23,6 +23,7 @@ import { readScreenMap } from "@device-farm/engine/screen-map-store";
 
 import { allowedDomains, decideAccess, localUser } from "../access";
 import { createAuthGate, requestUser, setRequestUser, upgradeRefusal, type AuthGate } from "../auth/http";
+import { notQueuedMessage } from "../queue/job-queue";
 import { dbSessionStore } from "../auth/sessions";
 import { summarizeBotRun } from "../bot-check";
 import { createFarm } from "../farm";
@@ -109,6 +110,19 @@ function parseFlowIds(value: unknown): string[] | undefined {
   if (value === undefined) return undefined;
   if (Array.isArray(value) && value.length > 0 && value.every((id) => typeof id === "string" && id.trim())) return value.map((id: string) => id.trim());
   throw new HttpError(400, "flowIds는 플로우 id 배열이어야 합니다.");
+}
+
+function parseScenarioNames(value: unknown): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (Array.isArray(value) && value.length > 0 && value.every((name) => typeof name === "string" && name.trim())) return [...new Set(value.map((name: string) => name.trim()))];
+  throw new HttpError(400, "scenarioNames는 화면 시나리오 이름 배열이어야 합니다.");
+}
+
+/** 이어서 돌릴 때 건너뛸 항목 이름(멈춘 점검에서 결과가 남은 것). 빈 배열도 받는다 */
+function parseSkipNames(value: unknown): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (Array.isArray(value) && value.every((name) => typeof name === "string" && name.trim())) return [...new Set(value.map((name: string) => name.trim()))];
+  throw new HttpError(400, "skipNames는 항목 이름 배열이어야 합니다.");
 }
 
 function parseKind(value: unknown): BuildKind {
@@ -205,14 +219,19 @@ async function startRun({ farm, req, res }: Parameters<Handler>[0]): Promise<voi
   if (body.flowsOnly !== undefined && typeof body.flowsOnly !== "boolean") throw new HttpError(400, "flowsOnly는 true 또는 false여야 합니다.");
   if (body.buttonCheck !== undefined && typeof body.buttonCheck !== "boolean") throw new HttpError(400, "buttonCheck는 true 또는 false여야 합니다.");
   const flowIds = parseFlowIds(body.flowIds);
+  if (body.skipInstall !== undefined && typeof body.skipInstall !== "boolean") throw new HttpError(400, "skipInstall은 true 또는 false여야 합니다.");
+  // 멈춘 점검을 이어서 돌릴 때: 결과가 남은 항목은 건너뛰고, 같은 빌드가 깔려 있으면 설치하지 않는다
+  const skipNames = parseSkipNames(body.skipNames);
   if (body.designOnly !== undefined && typeof body.designOnly !== "boolean") throw new HttpError(400, "designOnly는 true 또는 false여야 합니다.");
   const designPaths = parseDesignPaths(body.designPaths);
+  // 화면 시나리오를 골라 돌리면 설치·플로우·데이터·정책 점검 없이 그 화면만 다시 본다
+  const scenarioNames = parseScenarioNames(body.scenarioNames);
   // 디자인 화면을 골라 돌리면 설치·화면·플로우 점검 없이 그 화면만 본다(「디자인 점검」 탭)
   const designOnly = body.designOnly === true || designPaths !== undefined;
   // 플로우를 골라 돌리면 설치·화면 점검 없이 그 플로우만 돈다
   const flowsOnly = body.flowsOnly === true || flowIds !== undefined;
   // 플로우만 돌릴 때는 설치하지 않으니 버전을 받지 않는다.
-  const version = flowsOnly || designOnly ? installedVersionLabel : nonEmptyString(body.version, "version");
+  const version = flowsOnly || designOnly || scenarioNames ? installedVersionLabel : nonEmptyString(body.version, "version");
   const request = {
     kind: parseKind(body.kind),
     version,
@@ -220,11 +239,14 @@ async function startRun({ farm, req, res }: Parameters<Handler>[0]): Promise<voi
     flowsOnly,
     flowIds,
     buttonCheck: body.buttonCheck === true,
+    ...(skipNames?.length ? { skipNames, label: "기기 점검 (이어서)" } : {}),
+    ...(body.skipInstall === true ? { skipInstall: true } : {}),
+    ...(scenarioNames ? { scenarioNames, label: `화면 다시 점검 · ${scenarioNames.length}개` } : {}),
     ...(designOnly ? { designOnly, designPaths, label: designPaths?.length === 1 ? `디자인 점검 · ${designPaths[0]}` : "디자인 점검" } : {}),
   };
   const started = farm.startRun(request);
   if (!started.ok) return sendJson(res, 409, { error: started.error });
-  sendJson(res, 202, { runId: started.runId });
+  sendJson(res, 202, { runId: started.runId, position: started.position });
 }
 
 async function runOne({ farm, url, res }: Parameters<Handler>[0]): Promise<void> {
@@ -236,7 +258,7 @@ async function runOne({ farm, url, res }: Parameters<Handler>[0]): Promise<void>
 async function startBot({ farm, res }: Parameters<Handler>[0]): Promise<void> {
   const started = farm.startBot();
   if (!started.ok) return sendJson(res, 409, { error: started.error });
-  sendJson(res, 202, { started: started.runId });
+  sendJson(res, 202, { started: started.runId, position: started.position });
 }
 
 const issueStatuses = ["checking", "done", "not-issue"] as const;
@@ -258,7 +280,14 @@ async function startExplore({ farm, req, res }: Parameters<Handler>[0]): Promise
   if (body.build !== undefined && body.build !== "dev") throw new HttpError(400, "build는 dev만 받습니다.");
   const started = farm.startExplore({ deviceIds: parseDevices(body.devices) });
   if (!started.ok) return sendJson(res, 409, { error: started.error });
-  sendJson(res, 202, { runId: started.runId });
+  sendJson(res, 202, { runId: started.runId, position: started.position });
+}
+
+/** 대기열에서 기다리는 작업 빼기. body.id = GET /queue의 pending[].id */
+async function cancelQueued({ farm, req, res }: Parameters<Handler>[0]): Promise<void> {
+  const id = nonEmptyString((await readBody(req)).id, "id");
+  if (!farm.cancelQueued(id)) return sendJson(res, 404, { error: notQueuedMessage });
+  sendJson(res, 200, { canceled: true });
 }
 
 async function replay({ farm, req, res }: Parameters<Handler>[0]): Promise<void> {
@@ -434,6 +463,8 @@ const fixedRoutes: Record<string, Handler> = {
   "POST /run": startRun,
   "POST /run/stop": stopRun,
   "POST /jobs/stop": stopJob,
+  "GET /queue": json((farm) => farm.jobQueue()),
+  "POST /queue/cancel": cancelQueued,
   "GET /runs/latest": json((farm) => farm.latestRun()),
   "GET /runs": json((farm) => farm.runSummaries()),
   "GET /runs/one": runOne,

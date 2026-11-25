@@ -12,7 +12,7 @@ import type { Device } from "@device-farm/core/device/types";
 import { iosBackUnsupported } from "@device-farm/devices/stream/ios";
 
 import { requestUser, setRequestUser } from "../auth/http";
-import { createJobGate } from "../jobs";
+import { createJobQueue, notQueuedMessage } from "../queue/job-queue";
 import type { Farm } from "../types";
 import { botLockMessage, createPacketGate, deviceMiddleware, noLockMessage, prodExploreMessage, streamIdOf } from "./device-api";
 
@@ -29,9 +29,9 @@ const devices: Device[] = [
   { id: "I", platform: "ios", model: "iPhone", osVersion: "18", appVersion: "2.1.5" },
 ];
 
-/** 진짜 작업 게이트에 가짜 runDevices. 첫 실행은 release를 부를 때까지 끝나지 않는다. */
+/** 진짜 대기열에 가짜 runDevices. 첫 실행은 release를 부를 때까지 끝나지 않는다. */
 function fakeFarm() {
-  const gate = createJobGate(() => {});
+  const queue = createJobQueue({ onJobEnd: () => {}, log: () => {} });
   const calls = { runDevices: 0, explore: 0, inputs: [] as InputEvent[] };
   let release = () => {};
   const pending = new Promise<void>((resolve) => {
@@ -43,27 +43,36 @@ function fakeFarm() {
     resultsRoot,
     locks,
     mjpegUrl: "http://127.0.0.1:9",
-    isBusy: gate.isBusy,
+    isBusy: queue.isBusy,
+    jobQueue: () => queue.state(),
+    cancelQueued: (id) => queue.cancel(id),
     listDevices: async () => devices.map((device) => ({ ...device, state: "idle" as const })),
     platformOf: async (id) => devices.find((device) => device.id === id)?.platform ?? null,
     startRun: () => {
-      const started = gate.start("run", async () => {
-        calls.runDevices += 1;
-        for (const device of devices) locks.acquire(device.id, { kind: "bot", runId: "run-1" });
-        await pending;
+      const runId = `run-${calls.runDevices + queue.state().pending.length + 1}`;
+      const queued = queue.enqueue({
+        kind: "run",
+        label: "점검",
+        source: "manual",
+        ref: runId,
+        work: async () => {
+          calls.runDevices += 1;
+          for (const device of devices) locks.acquire(device.id, { kind: "bot", runId });
+          await pending;
+        },
       });
-      return started ? { ok: true, runId: "run-1" } : { ok: false, error: gate.busyMessage() };
+      return queued.ok ? { ok: true, runId, position: queued.position } : queued;
     },
-    stopRun: () => gate.isBusy(),
-    stopJob: (kind) => kind === "bot" && gate.isBusy(),
+    stopRun: () => queue.isBusy(),
+    stopJob: (kind) => kind === "bot" && queue.isBusy(),
     latestRun: () => null,
     pendingBaselines: () => [],
     candidatePng: () => null,
     confirmBaselines: () => 0,
     startExplore: () => {
       calls.explore += 1;
-      if (gate.isBusy()) return { ok: false, error: gate.busyMessage() };
-      return { ok: true, runId: "explore-1" };
+      const queued = queue.enqueue({ kind: "explore", label: "탐색", source: "manual", ref: "explore-1", work: async () => {} });
+      return queued.ok ? { ok: true, runId: "explore-1", position: queued.position } : queued;
     },
     latestExplore: () => [],
     replay: async () => [],
@@ -122,14 +131,28 @@ const run = { kind: "dev", version: "2.1.5", devices: "all" };
   const { farm, calls, release } = fakeFarm();
   const first = await call(farm, "POST", "/api/devices/run", run);
   assert.equal(first.status, 202);
-  assert.deepEqual(first.json(), { runId: "run-1" });
+  assert.deepEqual(first.json(), { runId: "run-1", position: 0 });
+  // 점검 중 두 번째 점검·탐색은 막지 않고 대기열 뒤에 쌓인다
   const second = await call(farm, "POST", "/api/devices/run", run);
-  assert.equal(second.status, 409);
-  assert.deepEqual(second.json(), { error: "이미 기기 점검 중입니다." });
+  assert.equal(second.status, 202);
+  assert.deepEqual(second.json(), { runId: "run-2", position: 1 });
   assert.equal(calls.runDevices, 1);
 
   const explore = await call(farm, "POST", "/api/devices/explore", { devices: "all", build: "dev" });
-  assert.equal(explore.status, 409, "기기 점검 중 탐색 요청");
+  assert.equal(explore.status, 202, "기기 점검 중 탐색 요청");
+  assert.deepEqual(explore.json(), { runId: "explore-1", position: 2 });
+
+  const listed = (await call(farm, "GET", "/api/devices/queue")).json() as { running: { ref: string }; pending: { id: string; kind: string }[] };
+  assert.equal(listed.running.ref, "run-1");
+  assert.deepEqual(listed.pending.map((job) => job.kind), ["run", "explore"]);
+  // 기다리는 작업 빼기. 없는 id는 404, id가 없으면 400
+  const canceled = await call(farm, "POST", "/api/devices/queue/cancel", { id: listed.pending[1].id });
+  assert.equal(canceled.status, 200);
+  assert.deepEqual(canceled.json(), { canceled: true });
+  const again = await call(farm, "POST", "/api/devices/queue/cancel", { id: listed.pending[1].id });
+  assert.equal(again.status, 404);
+  assert.deepEqual(again.json(), { error: notQueuedMessage });
+  assert.equal((await call(farm, "POST", "/api/devices/queue/cancel", {})).status, 400);
 
   const confirm = await call(farm, "POST", "/api/devices/baselines/confirm", {});
   assert.equal(confirm.status, 409);
@@ -172,6 +195,9 @@ const run = { kind: "dev", version: "2.1.5", devices: "all" };
   assert.equal(beta.status, 400);
   assert.ok(typeof (beta.json() as { error: unknown }).error === "string");
   assert.equal((await call(farm, "POST", "/api/devices/run", { ...run, devices: [] })).status, 400);
+  // 이어서 돌리기: skipNames는 이름 배열, skipInstall은 참·거짓
+  assert.equal((await call(farm, "POST", "/api/devices/run", { ...run, skipNames: "화면" })).status, 400);
+  assert.equal((await call(farm, "POST", "/api/devices/run", { ...run, skipInstall: "yes" })).status, 400);
   assert.equal(calls.runDevices, 0);
 }
 

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import type { DeviceRun } from "@device-farm/core/device/types";
 import type { PolicyWatchState } from "@device-farm/core/policy/snapshot";
 
-import { botActivities, finishedToast, policyActivity, runActivity } from "./activity-model";
+import { botActivities, finishedToast, policyActivity, queuedDetail, runActivity, startedText } from "./activity-model";
 
 const device = { id: "d1", platform: "android", model: "SM-A325N", osVersion: "13" } as DeviceRun["outcomes"][number]["device"];
 const run = (finishedAt: string | null, statuses: ("passed" | "failed")[]): DeviceRun => ({
@@ -52,5 +52,12 @@ assert.equal(bots[0].detail, "d1 · 3스텝 · 오류 스텝 0");
 // 첫 스텝 전(연결·홈 이동 중)에도 보인다
 assert.equal(botActivities([{ runId: "c", deviceId: "d1", seed: 3, startedAt: now, finishedAt: null, steps: 0, states: 0, errorSteps: 0, blocked: 0 }])[0].detail, "d1 준비 중");
 assert.equal(policyActivity(policy)?.stop, "policy");
+
+// 시작 버튼 뒤 안내: 대기열에 들어갔으면 몇 번째인지
+assert.equal(startedText(0, "봇 점검을 시작했어요."), "봇 점검을 시작했어요.");
+assert.equal(startedText(2, "봇 점검을 시작했어요."), "대기열 2번째에 넣었어요. 앞의 작업이 끝나면 차례로 돌아요.");
+const queuedAt = new Date(2026, 10, 17, 9, 5).toISOString();
+assert.equal(queuedDetail({ source: "nightly", queuedAt }), "예약 · 09:05에 넣음");
+assert.equal(queuedDetail({ source: "manual", queuedAt }), "직접 · 09:05에 넣음");
 
 console.log("activity model ok");

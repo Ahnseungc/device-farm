@@ -9,6 +9,7 @@
   "dependencies": {
     "@device-farm/core": "*",
     "playwright": "^1.63.0",
+    "pngjs": "^7.0.0",
     "webdriverio": "^9.20.0"
   }
 }

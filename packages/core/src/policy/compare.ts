@@ -132,7 +132,9 @@ export function figmaCoverage(figmaTexts: readonly string[], screenText: string)
 }
 
 /**
- * 피그마 문구 차이를 결과 줄로. 피그마 쪽 해시에 무시를 묶는다.
+ * 피그마 문구 차이를 결과 줄로. 무시 줄에는 그때의 피그마 페이지 해시를 남기지만, 무시 여부는 키(화면·문구)로만 본다.
+ * 페이지 해시는 그 페이지 어디든 고치면 바뀌어, 「문제 아님」을 누른 사용자 이름·dev 테스트 데이터가 디자이너가 페이지를 고칠 때마다
+ * 다시 알려졌다. 이 문구가 아직 피그마에 없다는 사실은 그대로라 무시를 유지한다.
  * 「피그마에 있는데 화면에 없음」은 결과에 넣지 않는다. 한 화면에 연결된 노드가 퍼널의 다른 단계·오류 상태·공용 시트까지 담고 있어
  * 화면 하나에서 수백 줄이 나왔다. 「화면에 있는데 피그마에 없음」만 본다.
  */
@@ -140,7 +142,7 @@ export function figmaChecks(diff: CopyDiff, figmaHash: string, path: string, ign
   const toCheck = (text: string, side: "missing" | "extra"): PolicyCheck => {
     const key = `figma:${path}:${side}:${squash(text)}`;
     const message = side === "missing" ? "피그마에 있는데 화면에 없습니다." : "화면에 있는데 피그마에 없습니다.";
-    return { id: key, title: `피그마 문구 「${text}」`, ok: false, message: `[피그마 차이] ${message}`, ignoreKey: key, ignoreHash: figmaHash, ignored: isIgnored(ignores, key, figmaHash) };
+    return { id: key, title: `피그마 문구 「${text}」`, ok: false, message: `[피그마 차이] ${message}`, ignoreKey: key, ignoreHash: figmaHash, ignored: ignores.some((item) => item.key === key) };
   };
   return diff.notInFigma.map((text) => toCheck(text, "extra"));
 }

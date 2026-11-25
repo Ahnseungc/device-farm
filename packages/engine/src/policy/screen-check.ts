@@ -16,7 +16,7 @@ import {
   type PolicyCheck,
   type PolicyIgnore,
 } from "@device-farm/core/policy/compare";
-import { isSensitivePath, judgeKey, judgePrompt, parseVerdicts, verdictChecks } from "@device-farm/core/policy/judge";
+import { isSensitivePath, judgeKey, judgePrompt, meaningChecks, parseVerdicts, verdictChecks, type Verdict } from "@device-farm/core/policy/judge";
 import { screenMatches, shortHash, type PageRules, type PolicyRule } from "@device-farm/core/policy/rules";
 import { sleep } from "@device-farm/core/sleep";
 
@@ -112,25 +112,31 @@ export interface PolicyCheckDeps {
   stay?: boolean;
 }
 
-async function judge(screen: PolicyScreen, text: string, screenHash: string, screenChanged: boolean, driver: ScreenDriver, deps: PolicyCheckDeps) {
+/**
+ * 동작 규칙과, 글자 그대로는 화면에 없던 문구·값 규칙(`copyMisses`)을 한 번에 묻는다.
+ * 문구 규칙 판정은 `meaningChecks`가 쓰고, 여기 결과 줄은 동작 규칙만이다.
+ */
+async function judge(screen: PolicyScreen, text: string, screenHash: string, screenChanged: boolean, driver: ScreenDriver, deps: PolicyCheckDeps, copyMisses: readonly PolicyRule[]) {
   const root = deps.root ?? policyRoot;
   const behaviors = screen.rules.filter((rule) => rule.kind === "behavior");
+  const asked = [...behaviors, ...copyMisses];
   const context = { ignores: deps.ignores, screenChanged, now: deps.now?.() ?? Date.now() };
-  if (behaviors.length === 0) return { checks: [], cached: false };
-  const key = judgeKey(screen.path, screenHash, behaviors, screen.figma?.hash ?? "");
+  const none: Verdict[] = [];
+  if (asked.length === 0) return { checks: [], verdicts: none, cached: false };
+  const key = judgeKey(screen.path, screenHash, asked, screen.figma?.hash ?? "");
   const cache = readJudgeCache(deps.db);
-  if (cache[key]) return { checks: verdictChecks(behaviors, cache[key], context), cached: true };
-  if (!deps.ask) return { checks: [], cached: false, judgeError: "Claude를 쓸 수 없어 화면 동작 규칙을 판정하지 않았습니다." };
+  if (cache[key]) return { checks: verdictChecks(behaviors, cache[key], context), verdicts: cache[key], cached: true };
+  if (!deps.ask) return { checks: [], verdicts: none, cached: false, judgeError: "Claude를 쓸 수 없어 화면 동작 규칙과 문구 뜻을 판정하지 않았습니다." };
   let screenshotFile: string | null = null;
   if (!isSensitivePath(screen.path)) {
     screenshotFile = path.join(root, "judge-shots", `${shortHash(key)}.png`);
     mkdirSync(path.dirname(screenshotFile), { recursive: true });
     writeFileSync(screenshotFile, await driver.screenshot());
   }
-  const prompt = judgePrompt(screen.path, text, behaviors, screenshotFile, screen.figma?.texts ?? [], driver.app.name);
-  const verdicts = parseVerdicts(await deps.ask(prompt, { allowRead: Boolean(screenshotFile) }), behaviors);
+  const prompt = judgePrompt(screen.path, text, asked, screenshotFile, screen.figma?.texts ?? [], driver.app.name);
+  const verdicts = parseVerdicts(await deps.ask(prompt, { allowRead: Boolean(screenshotFile) }), asked);
   writeJudgeCache({ ...readJudgeCache(deps.db), [key]: verdicts }, deps.db);
-  return { checks: verdictChecks(behaviors, verdicts, context), cached: false };
+  return { checks: verdictChecks(behaviors, verdicts, context), verdicts, cached: false };
 }
 
 /** 화면을 열고 문구 규칙·피그마 문구·화면 동작 판정을 돌린다. 판정이 실패해도 글자 비교 결과는 남긴다 */
@@ -157,16 +163,19 @@ export async function checkPolicyScreen(driver: ScreenDriver, policyScreen: Poli
   writeScreenHashes({ ...hashes, [screen.path]: screenHash }, deps.db);
 
   const now = deps.now?.() ?? Date.now();
-  const checks: PolicyCheck[] = compareCopyRules(screen.rules, { path: screen.path, text, ignores: deps.ignores, screenChanged, now, figmaTexts: screen.figma?.texts ?? null });
+  const copyChecks = compareCopyRules(screen.rules, { path: screen.path, text, ignores: deps.ignores, screenChanged, now, figmaTexts: screen.figma?.texts ?? null });
+  const missed = new Set(copyChecks.filter((check) => !check.ok).map((check) => check.id));
+  const copyMisses = screen.rules.filter((rule) => missed.has(rule.id));
+  const others: PolicyCheck[] = [];
   if (screen.figma) {
-    if (screen.figmaPage) checks.push(...figmaChecks(diffFigmaCopy(screen.figmaPage.texts, text), screen.figmaPage.hash, screen.path, deps.ignores));
-    checks.push(...docsMismatchChecks(screen.rules, screen.figma.texts, text, deps.ignores));
+    if (screen.figmaPage) others.push(...figmaChecks(diffFigmaCopy(screen.figmaPage.texts, text), screen.figmaPage.hash, screen.path, deps.ignores));
+    others.push(...docsMismatchChecks(screen.rules, screen.figma.texts, text, deps.ignores));
   }
   const situational = situationalRules(screen.rules, screen.path).length;
   try {
-    const judged = await judge(screen, text, screenHash, screenChanged, driver, deps);
-    return { path: screen.path, checks: [...checks, ...judged.checks], situational, cached: judged.cached, judgeError: judged.judgeError, figmaCoverage: coverage };
+    const judged = await judge(screen, text, screenHash, screenChanged, driver, deps, copyMisses);
+    return { path: screen.path, checks: [...meaningChecks(copyChecks, judged.verdicts), ...others, ...judged.checks], situational, cached: judged.cached, judgeError: judged.judgeError, figmaCoverage: coverage };
   } catch (error) {
-    return { path: screen.path, checks, situational, cached: false, judgeError: error instanceof Error ? error.message : String(error), figmaCoverage: coverage };
+    return { path: screen.path, checks: [...copyChecks, ...others], situational, cached: false, judgeError: error instanceof Error ? error.message : String(error), figmaCoverage: coverage };
   }
 }

@@ -34,6 +34,25 @@ function edgeKind(result: ButtonResult): MapEdgeKind | null {
 }
 
 /** 한 화면의 버튼 결과를 지도 간선으로. 누르지 못한(skipped) 버튼은 남기지 않는다. */
+/** 시나리오 고치기 프롬프트에 넣는 화면 지도 줄 수·화면당 버튼 수 (작성자 판단) */
+export const mapSummaryScreens = 60;
+export const mapSummaryButtons = 15;
+
+/** 화면마다 실제로 본 버튼(반응 없음·에러 제외) 한 줄씩: `- /path: 「이름」→/to, 「이름」(팝업)` */
+export function screenMapSummary(edges: readonly MapEdge[]): string {
+  const byScreen = new Map<string, MapEdge[]>();
+  for (const edge of edges) {
+    if (edge.kind === "dead" || edge.kind === "error") continue;
+    byScreen.set(edge.from, [...(byScreen.get(edge.from) ?? []), edge]);
+  }
+  const label = (edge: MapEdge) => `「${edge.name}」${edge.kind === "popup" ? "(팝업)" : edge.to ? `→${edge.to}` : ""}`;
+  return [...byScreen]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .slice(0, mapSummaryScreens)
+    .map(([from, list]) => `- ${from}: ${list.slice(0, mapSummaryButtons).map(label).join(", ")}`)
+    .join("\n");
+}
+
 export function edgesFrom(from: string, results: readonly ButtonResult[], seenAt: string): MapEdge[] {
   return results.flatMap((result) => {
     const kind = edgeKind(result);

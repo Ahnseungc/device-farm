@@ -5,6 +5,7 @@ import { designFlowIds, stepTarget, type FlowDocument, type FlowStep } from "@de
 
 import { FloatingNotice } from "./floating-notice";
 import { api, errorMessage, usePoll } from "./api-client";
+import { startedText } from "./activity-model";
 import { useAppConfig } from "./app-context";
 import { t } from "./i18n";
 import { LoadingState } from "./loading-state";
@@ -31,6 +32,8 @@ function stepSummary(steps: readonly FlowStep[], homeTabName: string): string {
       if (step.type === "expectText") return t(`「${step.text}」 확인`, `check “${step.text}”`);
       if (step.type === "fill") return t(`${step.label}에 ${step.value} 입력`, `type ${step.value} into ${step.label}`);
       if (step.type === "design") return t("디자인 확인", "design check");
+      if (step.type === "relaunch") return t("앱 다시 켜기", "relaunch the app");
+      if (step.type === "watchAd") return t(`「${stepTarget(step, homeTabName)}」 광고 보고 적립`, `watch the “${stepTarget(step, homeTabName)}” ad for a reward`);
       return homeTabName;
     })
     .join(" › ");
@@ -211,8 +214,8 @@ export function FlowsScreen({ onCreatingChange }: { onCreatingChange?: (creating
   async function run(ids?: string[], label = t("플로우 점검", "the flow check")) {
     setRunning(true);
     try {
-      await api.startRun({ kind: "dev", devices: "all", flowsOnly: true, ...(ids ? { flowIds: ids } : {}) });
-      setMessage({ text: t(`${label}을 시작했어요. 오른쪽에서 진행을 볼 수 있어요.`, `Started ${label}. Watch the progress on the right.`), error: false });
+      const { position } = await api.startRun({ kind: "dev", devices: "all", flowsOnly: true, ...(ids ? { flowIds: ids } : {}) });
+      setMessage({ text: startedText(position, t(`${label}을 시작했어요. 오른쪽에서 진행을 볼 수 있어요.`, `Started ${label}. Watch the progress on the right.`)), error: false });
     } catch (error) {
       setMessage({ text: errorMessage(error), error: true });
     } finally {

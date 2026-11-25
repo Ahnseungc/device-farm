@@ -89,3 +89,8 @@ assert.equal(decideWith("POST", "https://identitytoolkit.googleapis.com/v1/accou
 // 앱이 금지 경로를 더할 수 있다
 const extra = defineAppConfig({ ...sampleApp, guard: { extraForbiddenApiPatterns: [/coupon/i] } });
 assert.deepEqual(decideWith("POST", "/v1/coupon/use", { entries: [{ method: "POST", path: "/v1/coupon/use", status: "allow", note: "" }] }, extra.guard), { allow: false, reason: "forbidden" });
+// 로그인 갱신은 그 주소만 열고 같은 서버의 다른 쓰기·비슷한 도메인은 막는다
+const withRefresh = defineAppConfig({ ...sampleApp, guard: { pushTokenRequests: [{ method: "POST", path: "https://securetoken.googleapis.com/v1/token" }] } });
+assert.deepEqual(decideWith("POST", "https://securetoken.googleapis.com/v1/token?key=x", empty, withRefresh.guard), { allow: true });
+assert.equal(decideWith("POST", "https://securetoken.googleapis.com/v1/token/revoke", empty, withRefresh.guard).allow, false);
+assert.equal(decideWith("POST", "https://securetoken.googleapis.com.evil.com/v1/token", empty, withRefresh.guard).allow, false);

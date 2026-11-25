@@ -1,23 +1,33 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
+
 import { WebSocket } from "ws";
 
 import type { AppConfig } from "@device-farm/core/config/app-config";
 import type { DeviceOutcome, DeviceRun, DeviceScreen } from "@device-farm/core/device/types";
 import { findingLabels, screenMatches } from "@device-farm/core/policy/rules";
 import { designAlertBlocks, designAlertOf, designAlertText, designDiffsOf, type DesignAlert } from "@device-farm/core/slack/design-alert";
-import { deviceFinishAlert, type FinishAlert } from "@device-farm/core/slack/finish-alert";
-import { failureAlertBlocks, failureAlertOf, failureAlertText, failureTypeLabels, type FailureAlert } from "@device-farm/core/slack/failure-alert";
+import { deviceFinishAlert, devicePausedAlert, deviceStartAlert, type FinishAlert } from "@device-farm/core/slack/finish-alert";
+import { failureAlertBlocks, failureAlertOf, failureAlertText, failureIgnoreHash, failureIgnoreKey, failureTypeLabels, type FailureAlert } from "@device-farm/core/slack/failure-alert";
 import { fixPrActionId } from "@device-farm/core/slack/fix-pr";
 import { alertStatusLabels, figmaUrl, type AlertStatus, maxFigmaLinks, policyAlertBlocks, policyAlertsOf, policyAlertText, statusOfAction, urgentFindings, type AlertStatusInfo, type PolicyAlert } from "@device-farm/core/slack/policy-alert";
 import { createFixPrRunner, fixPrConfigFromEnv } from "@device-farm/engine/fix-pr/fix-pr";
+import { createGit } from "@device-farm/engine/fix-pr/git";
+import { askClaude } from "@device-farm/engine/policy/claude";
 import { confluenceConfigFromEnv } from "@device-farm/engine/policy/confluence";
 import { readFrontFigmaMap } from "@device-farm/engine/policy/front-figma";
 import { readPageOwnerName } from "@device-farm/engine/policy/people";
 import { addIgnore, readAllPageRules } from "@device-farm/engine/policy/rules-store";
 import { readSnapshot, readSources } from "@device-farm/engine/policy/store";
+import { refreshQaFront } from "@device-farm/engine/qa-report/front-source";
+import { qaReportLabel, type QaMessage } from "@device-farm/engine/qa-report/report";
+import { readRun } from "@device-farm/engine/results";
+import { testResultsRoot } from "@device-farm/engine/run";
 import { readAlerts, saveAlert, type SentAlert } from "@device-farm/engine/slack/alert-store";
 import { createSlackClient, openSocketUrl, type SlackClient } from "@device-farm/engine/slack/client";
 
 import { createFixPrButton, type FixPrButton } from "./fix-pr-button";
+import { createQaReportHandler, downloadReportImages, filePendingStore, qaMessageOf, type QaReportDeps } from "./qa-report";
 
 /**
  * 정책·피그마·앱 불일치를 슬랙 채널(`SLACK_CHANNEL_DEV`·`SLACK_CHANNEL_PROD`)에 알리고, 메시지 버튼(처리 완료·확인 중·문제 아님)으로 상태를 받는다.
@@ -37,8 +47,13 @@ const reconnectMs = 10_000;
 export interface SlackAlerts {
   /** 화면 하나의 점검이 끝날 때 부른다. 앱 버그 후보·실패는 바로 보낸다 */
   onScreenFinished: (run: DeviceRun, outcome: DeviceOutcome, screen: DeviceScreen) => Promise<void>;
-  /** 점검이 끝나면 부른다. 아직 안 보낸 것을 보내고, 한도를 넘거나 급하지 않은 것은 요약 한 건으로 */
-  onRunFinished: (run: DeviceRun) => Promise<void>;
+  /** 점검이 시작되면 한 줄(QA 제보 점검은 빼고) */
+  onRunStarted: (run: DeviceRun) => Promise<void>;
+  /**
+   * 점검이 끝나면 부른다. 아직 안 보낸 것을 보내고, 한도를 넘거나 급하지 않은 것은 요약 한 건으로.
+   * `paused`면 QA 제보에 밀려 멈춘 것이라 「끝」 대신 「멈춤 · 이어서 돌려요」를 보낸다
+   */
+  onRunFinished: (run: DeviceRun, options?: { paused?: boolean }) => Promise<void>;
   /** 디바이스팜 화면에서 상태를 바꾼다. 슬랙 메시지도 같이 고친다(토큰이 없으면 기록만) */
   setStatus: (key: string, status: Exclude<AlertStatus, "open">, by?: string) => Promise<boolean>;
   /** 봇·탐색 점검이 끝나면 한 줄 요약을 SLACK_CHANNEL_DEV에 보낸다. 기기 점검은 onRunFinished가 보낸다 */
@@ -107,6 +122,10 @@ export async function applyAlertStatus(key: string, status: Exclude<AlertStatus,
   if (!sent) return false;
   const updated = { ...sent, status, by, at: timeLabel(new Date()) };
   saveAlert(key, updated);
+  // 실패 알림의 「문제 아님」은 같은 화면·같은 실패를 다음 점검부터 통과로 넘긴다
+  if (status === "not-issue" && isFailure(sent.alert)) {
+    addIgnore({ key: failureIgnoreKey(sent.alert.path, sent.alert.message), hash: failureIgnoreHash, reason: `문제 아님 (${by ?? "?"})`, at: new Date().toISOString() });
+  }
   if (status === "not-issue" && !isFailure(sent.alert)) {
     const reason = `문제 아님 (${by ?? "?"})`;
     // 피그마 차이 묶음은 묶인 문구를 전부 무시한다
@@ -131,8 +150,10 @@ async function handleAction(client: SlackClient, payload: BlockActionPayload, fi
   if (!(await applyAlertStatus(key, status, payload.user?.id, client, log))) log(`슬랙 버튼: 모르는 알림 ${key}`);
 }
 
+const splitList = (value: string | undefined) => (value ?? "").split(",").map((item) => item.trim()).filter(Boolean);
+
 /** Socket Mode: 연결 → 이벤트마다 바로 ack → 버튼이면 처리. 끊기면 다시 연결한다 */
-function connectSocket(appToken: string, client: SlackClient, fixPr: FixPrButton | null, log: (message: string) => void): () => void {
+function connectSocket(appToken: string, client: SlackClient, fixPr: FixPrButton | null, log: (message: string) => void, onMessage?: (message: QaMessage) => Promise<void>): () => void {
   let socket: WebSocket | null = null;
   let stopped = false;
   let timer: NodeJS.Timeout | null = null;
@@ -162,6 +183,9 @@ function connectSocket(appToken: string, client: SlackClient, fixPr: FixPrButton
       if (envelope.type === "interactive" && envelope.payload?.type === "block_actions") {
         handleAction(client, envelope.payload, fixPr, log).catch((error: unknown) => log(`슬랙 버튼 처리 실패: ${error instanceof Error ? error.message : String(error)}`));
       }
+      // 채널 메시지(QA 태그 제보). 슬랙 앱 Event Subscriptions에 message.channels가 있어야 온다
+      const message = envelope.type === "events_api" ? qaMessageOf(envelope.payload) : null;
+      if (message && onMessage) onMessage(message).catch((error: unknown) => log(`QA 제보 처리 실패: ${error instanceof Error ? error.message : String(error)}`));
     });
     socket.on("close", schedule);
     socket.on("error", (error) => log(`슬랙 Socket Mode 오류: ${error.message}`));
@@ -212,9 +236,16 @@ function overflowBlocks(rest: AnyAlert[], run: DeviceRun): unknown[] {
   ];
 }
 
-export function startSlackAlerts(app: AppConfig, log: (message: string) => void): SlackAlerts {
+export interface SlackAlertOptions {
+  /** 제보 플로우를 만들 때 볼 화면 지도 요약 */
+  screenMap?: () => string;
+  /** QA 채널 태그 제보 플로우를 후보로 남기고 바로 돌린다. 없으면 제보를 받지 않는다 */
+  qaReport?: Pick<QaReportDeps, "saveCandidate" | "runFlow" | "knownFlows" | "knownPopups" | "stopReport" | "policyDir">;
+}
+
+export function startSlackAlerts(app: AppConfig, log: (message: string) => void, options: SlackAlertOptions = {}): SlackAlerts {
   const botToken = process.env.SLACK_BOT_TOKEN?.trim();
-  if (!botToken) return { onScreenFinished: async () => undefined, onRunFinished: async () => undefined, onFinished: async () => undefined, setStatus: (key, status, by) => applyAlertStatus(key, status, by, null, log), stop: () => undefined };
+  if (!botToken) return { onScreenFinished: async () => undefined, onRunStarted: async () => undefined, onRunFinished: async () => undefined, onFinished: async () => undefined, setStatus: (key, status, by) => applyAlertStatus(key, status, by, null, log), stop: () => undefined };
   const client = createSlackClient(botToken);
   const appToken = process.env.SLACK_APP_TOKEN?.trim();
   const fixConfig = fixPrConfigFromEnv();
@@ -229,7 +260,64 @@ export function startSlackAlerts(app: AppConfig, log: (message: string) => void)
       })
     : null;
   fixPr?.recover().catch((error: unknown) => log(`수정 PR 상태 복구 실패: ${error instanceof Error ? error.message : String(error)}`));
-  const stopSocket = appToken ? connectSocket(appToken, client, fixPr, log) : () => undefined;
+  /** 받을 태그 id. 이름으로 찾은 id가 나중에 더해진다 */
+  const qaMentionIds: string[] = splitList(process.env.SLACK_QA_MENTION_IDS);
+  const qaChannel = process.env.SLACK_CHANNEL_QA?.trim();
+  /** 제보 점검이 실패하면 그 실패를 오류 알림 모양(「수정 PR 만들기」 버튼)으로 제보 스레드에 단다 */
+  const postFixButton = async (channel: string, threadTs: string, runId: string) => {
+    const run = readRun(runId);
+    if (!run) return;
+    for (const outcome of run.outcomes) {
+      for (const screen of outcome.screens) {
+        const found = failureAlertOf(run, outcome, screen);
+        if (!found) continue;
+        // 점검 채널 알림과 키가 겹치지 않게 제보 글로 나눈다
+        const alert = { ...found, key: `qa|${threadTs}|${found.key}` };
+        const posted = await client.postInThread(channel, threadTs, alertText(alert), alertBlocks(alert));
+        saveAlert(alert.key, { alert, channel: posted.channel, ts: posted.ts, threadTs, sentAt: new Date().toISOString(), status: "open" });
+      }
+    }
+  };
+  const qaHandler =
+    qaChannel && options.qaReport
+      ? createQaReportHandler({
+          client,
+          postFixButton,
+          // 수정 PR과 같은 레포 사본에 읽기 전용 작업 트리를 두고 제보마다 최신으로(토큰이 없으면 앱 코드 없이)
+          ...(fixConfig ? { frontSource: () => refreshQaFront(createGit(fixConfig.token, { name: "device-farm", email: "farm@localhost" }), path.join(testResultsRoot, "fix-pr"), fixConfig.repo, fixConfig.bases[0] ?? "main") } : {}),
+          pendingStore: filePendingStore(path.resolve("test-results/qa-reports/pending.json")),
+          // 점검 결과 폴더 옆(test-results)에 둔다. Claude Read가 디바이스팜 폴더 안만 본다
+          downloadImages: (message) => downloadReportImages(message.images ?? [], path.resolve("test-results/qa-reports", message.ts.replace(/\D/g, "")), botToken),
+          app,
+          ask: askClaude,
+          channel: qaChannel,
+          mentionIds: qaMentionIds,
+          screenMap: options.screenMap ?? (() => ""),
+          ...options.qaReport,
+          log,
+        })
+      : undefined;
+  // 이름으로 준 사람(`SLACK_QA_MENTION_NAMES`, 슬랙 실명·표시 이름)은 `users:read`로 id를 찾는다. 못 찾으면 다음 메시지 때 다시
+  const pendingNames = new Set(splitList(process.env.SLACK_QA_MENTION_NAMES));
+  const resolveNames = async () => {
+    for (const name of [...pendingNames]) {
+      const id = await client.findUserIdByName(name);
+      if (!id) continue;
+      pendingNames.delete(name);
+      if (!qaMentionIds.includes(id)) qaMentionIds.push(id);
+      log(`QA 제보 태그 대상: ${name} (${id})`);
+    }
+  };
+  const onQaMessage = qaHandler
+    ? async (message: QaMessage) => {
+        if (pendingNames.size > 0) await resolveNames();
+        await qaHandler(message);
+      }
+    : undefined;
+  // 처리하다 서버가 꺼진 제보는 다시 켜질 때 이어서 처리한다
+  if (qaHandler) void resolveNames().then(() => qaHandler.resume());
+  if (!qaChannel) log("SLACK_CHANNEL_QA가 없어 QA 제보는 받지 않아요.");
+  const stopSocket = appToken ? connectSocket(appToken, client, fixPr, log, onQaMessage) : () => undefined;
   if (!appToken) log("SLACK_APP_TOKEN이 없어 슬랙 버튼은 받지 않아요(알림은 보내요).");
   const owners = new Map<string, Owner>();
 
@@ -279,34 +367,49 @@ export function startSlackAlerts(app: AppConfig, log: (message: string) => void)
     onScreenFinished: (run, outcome, screen) =>
       enqueue(async () => {
         const channel = channelFor(run);
-        if (!channel) return;
+        // QA 제보 점검은 제보 스레드에만 단다
+        if (!channel || run.label === qaReportLabel) return;
         const one = { ...run, outcomes: [{ ...outcome, screens: [screen] }] };
         const sent = readAlerts();
         const alerts: AnyAlert[] = [...(await policyAlertsFor(one)).filter(isUrgent), ...failureAlertsOf(one)].filter((alert) => !sent[alert.key]);
         for (const alert of alerts) await sendOne(alert, channel, run.runId);
       }),
-    onRunFinished: (run) =>
+    onRunStarted: (run) =>
       enqueue(async () => {
         const channel = channelFor(run);
-        if (!channel) return;
-        await sendDesign(run, channel);
-        const sent = readAlerts();
-        const fresh: AnyAlert[] = [...(await policyAlertsFor(run)), ...failureAlertsOf(run)].filter((alert) => !sent[alert.key]);
-        // 바로 보낼 것(화면 알림에서 한도에 걸리지 않고 남은 것, CLI처럼 화면 알림 없이 끝만 부른 경우)을 먼저
-        const rest: AnyAlert[] = [];
-        for (const alert of fresh) {
-          if (!(isUrgent(alert) && (await sendOne(alert, channel, run.runId)))) rest.push(alert);
-        }
-        if (rest.length > 0) {
-          await client.post(channel, `점검 요약 · ${rest.length}건 더`, overflowBlocks(rest, run));
-          // 요약으로 보낸 것도 다시 보내지 않는다(버튼 없음, 상태는 디바이스팜에서)
-          const now = new Date().toISOString();
-          for (const alert of rest) saveAlert(alert.key, { alert, channel, ts: "", sentAt: now, status: "open" });
-          log(`슬랙 점검 요약 ${rest.length}건`);
+        if (!channel || run.label === qaReportLabel) return;
+        const start = deviceStartAlert(run);
+        await client.post(channel, start.text, start.blocks);
+        log(`슬랙 시작 알림: ${start.text}`);
+      }),
+    onRunFinished: (run, options) =>
+      enqueue(async () => {
+        const channel = channelFor(run);
+        if (!channel || run.label === qaReportLabel) return;
+        try {
+          await sendDesign(run, channel);
+          const sent = readAlerts();
+          const fresh: AnyAlert[] = [...(await policyAlertsFor(run)), ...failureAlertsOf(run)].filter((alert) => !sent[alert.key]);
+          // 바로 보낼 것(화면 알림에서 한도에 걸리지 않고 남은 것, CLI처럼 화면 알림 없이 끝만 부른 경우)을 먼저
+          const rest: AnyAlert[] = [];
+          for (const alert of fresh) {
+            if (!(isUrgent(alert) && (await sendOne(alert, channel, run.runId)))) rest.push(alert);
+          }
+          if (rest.length > 0) {
+            await client.post(channel, `점검 요약 · ${rest.length}건 더`, overflowBlocks(rest, run));
+            // 요약으로 보낸 것도 다시 보내지 않는다(버튼 없음, 상태는 디바이스팜에서)
+            const now = new Date().toISOString();
+            for (const alert of rest) saveAlert(alert.key, { alert, channel, ts: "", sentAt: now, status: "open" });
+            log(`슬랙 점검 요약 ${rest.length}건`);
+          }
+        } catch (error) {
+          // 앞 알림이 실패해도 끝 알림은 보낸다
+          log(`슬랙 알림 실패: ${error instanceof Error ? error.message : String(error)}`);
         }
         // 문제가 없어도 끝났다는 한 줄은 남긴다
-        const finish = deviceFinishAlert(run);
+        const finish = options?.paused ? devicePausedAlert(run) : deviceFinishAlert(run);
         await client.post(channel, finish.text, finish.blocks);
+        log(`슬랙 끝 알림: ${finish.text}`);
       }),
     onFinished: (alert) =>
       enqueue(async () => {

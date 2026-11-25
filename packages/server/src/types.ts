@@ -12,8 +12,11 @@ import type { ExploreResult } from "@device-farm/engine/explore/results";
 import type { DesignPage } from "@device-farm/engine/policy/design-pages";
 import type { RunRequest } from "@device-farm/engine/run";
 
+import type { JobQueueState } from "./queue/job-queue";
+
 export type DeviceWithState = Device & { state: DeviceState };
-export type StartResult = { ok: true; runId: string } | { ok: false; error: string };
+/** position 0이면 바로 시작, n이면 대기열 n번째 */
+export type StartResult = { ok: true; runId: string; position: number } | { ok: false; error: string };
 export type ControlAction = "lock" | "release" | "expire";
 export type ControlEntry = { at: number; user: string; deviceId: string; action: ControlAction };
 
@@ -45,7 +48,12 @@ export interface Farm {
   mjpegUrl: string;
   /** iOS MJPEG를 주기 전에 WDA 세션이 살아 있게 한다. 끊겼으면 새로 연다. */
   ensureIosSession?: (id: string) => Promise<void>;
+  /** 작업이 돌고 있나(대기열 맨 앞). 기준·플로우 확정을 막는 데 쓴다 */
   isBusy: () => boolean;
+  /** 도는 작업과 기다리는 작업(queue/specs) */
+  jobQueue: () => JobQueueState;
+  /** 기다리는 작업 빼기. 대기열에 없으면(이미 시작·빠짐) false */
+  cancelQueued: (id: string) => boolean;
   listDevices: () => Promise<DeviceWithState[]>;
   platformOf: (id: string) => Promise<Platform | null>;
   startRun: (request: Omit<RunRequest, "runId" | "trigger">) => StartResult;

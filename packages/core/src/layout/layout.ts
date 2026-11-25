@@ -95,7 +95,21 @@ export const layoutScript = `(() => {
     }
     return clips;
   };
-  const textRect = (el) => { const range = document.createRange(); range.selectNodeContents(el); return visibleRect(range.getBoundingClientRect(), clipsOf(el)); };
+  // 자기 글자 노드만 잰다. 요소 전체(selectNodeContents)를 재면 하위 목록까지 들어가, 약관 「“서비스”란…」 항목 영역이
+  // 아래 가~사 하위 항목까지 늘어나 하단 고정 「닫기」와 겹친다고 오탐했다
+  const textRect = (el) => {
+    let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+    for (const node of el.childNodes) {
+      if (node.nodeType !== 3 || !node.textContent.trim()) continue;
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      const r = range.getBoundingClientRect();
+      if (r.width === 0 && r.height === 0) continue;
+      left = Math.min(left, r.left); top = Math.min(top, r.top); right = Math.max(right, r.right); bottom = Math.max(bottom, r.bottom);
+    }
+    if (left === Infinity) return visibleRect({ left: 0, top: 0, right: 0, bottom: 0 }, []);
+    return visibleRect({ left, top, right, bottom }, clipsOf(el));
+  };
   const onTop = (el, r) => { const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2); return Boolean(hit) && (hit === el || el.contains(hit) || hit.contains(el)); };
   const outermost = (list) => list.filter((el) => !list.some((other) => other !== el && other.contains(el)));
 
@@ -137,7 +151,11 @@ export const layoutScript = `(() => {
     }
   }
 
-  const cutBottom = outermost(all.filter((el) => {
+  // 입력칸에 포커스가 있으면(자동 포커스로 키보드가 열림) 하단 고정 영역은 키보드에 밀리거나 덮이는 게 정상이다.
+  // 금 판매 입력·응모권 교환이 이걸로 「하단 고정 영역 잘림」 오탐을 냈다
+  const active = document.activeElement;
+  const typing = !!active && (/^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName) || active.isContentEditable);
+  const cutBottom = typing ? [] : outermost(all.filter((el) => {
     const s = getComputedStyle(el);
     if (s.position !== "fixed" && s.position !== "sticky") return false;
     if (s.bottom === "auto") return false;

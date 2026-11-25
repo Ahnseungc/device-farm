@@ -16,7 +16,7 @@ function setup(runner: FixPrRunner) {
     post: async () => ({ channel: "C1", ts: "9" }),
     update: async (_channel: string, _ts: string, text: string) => void events.push(`update ${text}`),
     reply: async (_channel: string, threadTs: string, text: string) => void events.push(`reply ${threadTs} ${text.split("\n")[0]}`),
-    findUserIdByName: async () => null,
+    findUserIdByName: async () => null, postInThread: async () => ({ channel: "C1", ts: "9" }), uploadImage: async () => undefined,
   } satisfies SlackClient;
   const button = createFixPrButton({
     client,

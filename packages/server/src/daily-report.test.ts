@@ -27,7 +27,7 @@ const slack = {
     sent.push(`update ${ts}`);
   },
   reply: async () => undefined,
-  findUserIdByName: async () => null,
+  findUserIdByName: async () => null, postInThread: async () => ({ channel: "C1", ts: "9" }), uploadImage: async () => undefined,
 } as SlackClient;
 const now = () => new Date("2026-11-13T09:01:00");
 const answer = '{"summary":"출석체크 실패","issues":[{"title":"출석체크 안 열림","kind":"app-bug","evidence":["R1"],"action":"확인 필요","new":true}],"stable":""}';

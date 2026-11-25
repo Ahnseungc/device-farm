@@ -6,6 +6,7 @@ import type { BuildKind, DeviceRun, DeviceState } from "@device-farm/core/device
 import { FloatingNotice, type Notice } from "./floating-notice";
 import { LoadingState } from "./loading-state";
 import { api, errorMessage, usePoll, type DeviceWithState } from "./api-client";
+import { startedText } from "./activity-model";
 import { plural, t } from "./i18n";
 import { LiveView } from "./live-view";
 import { ActionButton } from "./seed-design/ui/action-button";
@@ -189,17 +190,17 @@ function RunForm({ devices, onStarted }: RunFormProps) {
     }
     setPending(true);
     try {
-      const { runId } = await api.startRun({
+      const { runId, position } = await api.startRun({
         kind,
         version: version.trim(),
         devices: selected.length > 0 ? selected : "all",
         buttonCheck,
       });
       onStarted(
-        t(
+        startedText(position, t(
           `${kind} ${version.trim()} 점검을 시작했어요. 오른쪽에서 진행을 볼 수 있어요. (${runId})`,
           `Started checking ${kind} ${version.trim()}. Progress shows on the right. (${runId})`,
-        ),
+        )),
       );
     } catch (caught) {
       setError(errorMessage(caught));

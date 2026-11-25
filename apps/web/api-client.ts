@@ -28,6 +28,11 @@ export type FlowGenerateResult = { ok: true; generated: number; skipped: boolean
 export type DailyReportView = { day: string; createdAt: string; input: DailyInput; analysis: DailyAnalysis | null; failure?: string };
 export type BotSummaryView = { text: string; at: string };
 export type IssueStatusChange = "checking" | "done" | "not-issue";
+/** 시작 요청 응답. position 0이면 바로 시작, n이면 대기열 n번째 */
+export type Queued = { position: number };
+/** 서버 대기열 한 칸 — 화면에서 쓰는 것만 */
+export type QueuedJobView = { id: string; kind: "run" | "explore" | "bot"; label: string; source: "manual" | "nightly" | "auto" | "fix"; ref?: string; queuedAt: string };
+export type JobQueueView = { running: (QueuedJobView & { startedAt: string }) | null; pending: QueuedJobView[] };
 
 export const pollIntervalMs = 2_000;
 
@@ -93,7 +98,9 @@ export const api = {
     designOnly?: boolean;
     designPaths?: string[];
   }) =>
-    request<{ runId: string }>("POST", "/api/devices/run", body),
+    request<{ runId: string } & Queued>("POST", "/api/devices/run", body),
+  jobQueue: () => request<JobQueueView>("GET", "/api/devices/queue"),
+  cancelQueued: (id: string) => request<{ canceled: true }>("POST", "/api/devices/queue/cancel", { id }),
   latestRun: () => request<DeviceRun | null>("GET", "/api/devices/runs/latest"),
   runs: () => request<RunSummary[]>("GET", "/api/devices/runs"),
   designPages: () => request<DesignPage[]>("GET", "/api/devices/design"),
@@ -109,7 +116,7 @@ export const api = {
   touchLock: (id: string) => request<unknown>("POST", `${devicePath(id)}/lock/touch`),
 
   startExplore: (devices: DeviceSelection) =>
-    request<{ runId: string }>("POST", "/api/devices/explore", { devices, build: "dev" }),
+    request<{ runId: string } & Queued>("POST", "/api/devices/explore", { devices, build: "dev" }),
   flows: () => request<FlowsState>("GET", "/api/devices/flows"),
   generateFlows: (prd: string) => request<FlowGenerateResult>("POST", "/api/devices/flows/generate", { prd }),
   addMapFlow: (body: { name: string; steps: FlowStep[] }) => request<{ id: string }>("POST", "/api/devices/flows/from-map", body),
@@ -127,7 +134,7 @@ export const api = {
   issues: () => request<FarmIssue[]>("GET", "/api/devices/issues"),
   setIssueStatus: (key: string, status: IssueStatusChange) => request<{ ok: true }>("POST", "/api/devices/issues/status", { key, status }),
   latestDailyReport: () => request<DailyReportView | null>("GET", "/api/devices/daily/latest"),
-  startBot: () => request<{ started: string }>("POST", "/api/devices/chaos/start"),
+  startBot: () => request<{ started: string } & Queued>("POST", "/api/devices/chaos/start"),
   botSummary: (id: string) => request<BotSummaryView | null>("GET", `/api/devices/chaos/summary?id=${encodeURIComponent(id)}`),
   summarizeBot: (id: string) => request<BotSummaryView>("POST", "/api/devices/chaos/summary", { id }),
 

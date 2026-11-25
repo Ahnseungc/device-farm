@@ -84,7 +84,8 @@ function isAndroidDriver(driver: ScreenDriver): driver is AndroidScreenDriver {
 /** 가드 없이 Android를 탐색하지 않는다(fail closed). */
 export const defaultGuard: Guard = async (driver, webOrigin, allowlist, onBlocked) => {
   if (!isAndroidDriver(driver)) throw new Error("Android 드라이버가 아니라 요청 가드를 켤 수 없습니다.");
-  return guardAndroidPage(driver.context, guardTargetOf(driver.app, webOrigin), allowlist, onBlocked);
+  // driver.context에 직접 걸면 앱을 다시 켜 다시 붙을 때 사라진다. 감싼 드라이버({...driver})의 context는 첫 연결에 멈춰 있기도 하다
+  return driver.attachContext((context) => guardAndroidPage(context, guardTargetOf(driver.app, webOrigin), allowlist, onBlocked));
 };
 
 const nowOf = (deps: ExploreDeps) => (deps.now ?? Date.now)();

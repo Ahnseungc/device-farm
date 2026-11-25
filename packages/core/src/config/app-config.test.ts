@@ -14,6 +14,15 @@ import { sampleApp } from "./sample-app";
   assert.equal(app.deepLink.homeHost, "home");
   assert.equal(app.qa.sessionPath, "/api/auth/session");
   assert.deepEqual(app.access.allowedDomains, []);
+  // 새로 켜는 것은 앱이 적어야만 켜진다
+  assert.equal(app.login.kakao, undefined);
+  assert.equal(app.android.notificationAppLabel, undefined);
+  assert.deepEqual(app.android.devOverlay, { chips: [], preview: undefined });
+  assert.equal(app.ads.balancePattern, undefined);
+  assert.deepEqual(app.popups, { extraCloseNames: [], resultTitles: [] });
+  assert.deepEqual(app.uncheckedPathPrefixes, []);
+  assert.deepEqual(app.guard.harmlessBlockedPatterns, []);
+  assert.deepEqual(app.qaReport, { promptRules: [], opinionRules: [] });
 }
 
 // 앱 id: iOS 번들 id가 따로 있으면 그것, 모르는 id는 dev

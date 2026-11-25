@@ -76,6 +76,7 @@ assert.ok(prompt.includes("NO_FIX farm"));
 // 디바이스팜 고치기 줄·프롬프트
 assert.equal(farmFixLine(undefined), null);
 assert.equal(farmFixLine({ state: "committed", commit: "deadbeef1234" }), ":white_check_mark: 디바이스팜 오탐 — 점검 로직을 고쳐 main에 커밋했어요 `deadbee`");
+assert.equal(farmFixLine({ state: "committed", commit: "cafe1234", scenario: true, recheck: { state: "passed" } }), ":white_check_mark: 디바이스팜 오탐 — 시나리오를 고쳐 main에 커밋했어요 `cafe123` · 다시 돌려 통과");
 const farmContext = failureAlertBlocks(alert, { status: "open", fix: { state: "no-change", category: "farm", farm: { state: "running" } } }, true).find(
   (block) => (block as { type: string; elements?: { text?: string }[] }).type === "context" && JSON.stringify(block).includes("디바이스팜 오탐"),
 );

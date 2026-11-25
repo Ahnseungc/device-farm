@@ -109,6 +109,27 @@ try {
     assert.ok(!stayed.checks.some((check) => check.id === "open"));
   }
 
+  // 정책 글자가 화면에 그대로 없으면 판정에 같이 묻고, 같은 뜻이면 「같은 뜻, 다른 문구」로 통과
+  {
+    const copyId = rules.rules.find((rule) => rule.kind === "copy")!.id;
+    let prompt = "";
+    const meaningAsk: AskClaude = async (text) => {
+      prompt = text;
+      return JSON.stringify({ verdicts: [{ ruleId: behaviorId(), result: "match", reason: "" }, { ruleId: copyId, result: "match", reason: "「1만원부터 출금할 수 있어요」" }] });
+    };
+    const reworded = { ...driver, evaluate: async () => "1만원부터 출금할 수 있어요\n출금하기" } as ScreenDriver;
+    const meaning = await checkPolicyScreen(reworded, screen, { ask: meaningAsk, ignores: [], root, db, settleMs: 0 });
+    assert.match(prompt, /\[문구\]/);
+    const copyCheck = meaning.checks.find((check) => check.id === copyId);
+    assert.equal(copyCheck?.ok, true);
+    assert.equal(copyCheck?.message, "같은 뜻, 다른 문구: 「1만원부터 출금할 수 있어요」");
+    // Claude를 못 쓰면(캐시도 없으면) 글자 비교 결과 그대로
+    const unseen = { ...driver, evaluate: async () => "처음 보는 화면\n출금하기" } as ScreenDriver;
+    const literalOnly = await checkPolicyScreen(unseen, screen, { ask: null, ignores: [], root, db, settleMs: 0 });
+    assert.match(literalOnly.judgeError ?? "", /문구 뜻/);
+    assert.equal(literalOnly.checks.find((check) => check.id === copyId)?.ok, false);
+  }
+
   // 다른 화면이 열려 있으면 비교하지 않는다
   const wrong = await checkPolicyScreen({ ...driver, currentPath: async () => "/home" } as ScreenDriver, screen, { ask, ignores: [], root, db, settleMs: 0 });
   assert.equal(wrong.checks[0].id, "open");

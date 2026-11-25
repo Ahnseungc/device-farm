@@ -16,8 +16,8 @@ export interface NightlyDeps {
 }
 
 /**
- * 야간 플로우 점검·봇 점검을 정해진 시각에 돌린다(docs/operations.md). 정책 감시처럼 서버 안 타이머로 돈다.
- * 다른 작업이 돌고 있으면 다음 확인 때 다시 시도하고, 창(nightlyWindowMs)이 지나면 그날은 건너뛴 것으로 남긴다.
+ * 정기 점검(3시간마다)·야간 봇 점검을 정해진 시각에 돌린다(docs/operations.md). 정책 감시처럼 서버 안 타이머로 돈다.
+ * 다른 작업이 돌고 있으면 다음 확인 때 다시 시도하고, 창(nightlyWindowMs)이 지나면 그 칸은 건너뛴 것으로 남긴다.
  */
 export function startNightlyChecks(deps: NightlyDeps): { tick: () => void; stop: () => void } {
   const now = deps.now ?? (() => new Date());

@@ -156,18 +156,45 @@ function isAllowedWrite(method: string, url: string, allowlist: Allowlist | unde
   return decideRequest(method, pathnameOf(url), allowlist, rules).allow;
 }
 
-function logIssueOf(entry: LogEntry, allowlist: Allowlist | undefined, rules: GuardRules): Issue | null {
+/** 웹 주소의 사이트(`https://dev.shop.example.com` → `shop.example.com`). dev·prod 웹이 모두 이 아래에 있다고 본다 */
+export function appSiteOf(webOrigin: string): string {
+  const labels = new URL(webOrigin).hostname.split(".");
+  return labels.length > 2 ? labels.slice(1).join(".") : labels.join(".");
+}
+
+/** 앱 사이트 요청인가. 못 읽는 주소는 앱 요청으로 본다(놓치지 않게) */
+export function isAppSiteUrl(url: string, appSite: string): boolean {
+  try {
+    const host = new URL(url).hostname;
+    return host === appSite || host.endsWith(`.${appSite}`);
+  } catch {
+    return true;
+  }
+}
+
+/** API 호스트가 웹과 다른 사이트인 앱(`AppConfig.apiOrigin`) */
+const isApiUrl = (url: string, apiOrigin: string) => {
+  try {
+    return apiOrigin !== "" && new URL(url).host === new URL(apiOrigin).host;
+  } catch {
+    return false;
+  }
+};
+
+function logIssueOf(entry: LogEntry, allowlist: Allowlist | undefined, rules: GuardRules, appSite: string | undefined, apiOrigin: string): Issue | null {
   if (entry.source === "console") return { kind: "console", message: entry.text };
   if (entry.source === "crash") return { kind: "crash", message: entry.text };
   if (entry.source !== "network") return null;
   const parsed = parseNetworkLog(entry.text);
   // 형식이 다른 줄은 판단하지 않는다. 수집기는 formatNetworkLog로 남긴다.
   if (!parsed) return null;
+  // 광고·CDN·분석 같은 바깥 요청의 4xx·5xx는 앱 결함이 아니다
+  if (appSite && !isAppSiteUrl(parsed.url, appSite) && !isApiUrl(parsed.url, apiOrigin)) return null;
   return networkIssue({ ...parsed, allowedWrite: isAllowedWrite(parsed.method, parsed.url, allowlist, rules) });
 }
 
-function logIssue(entry: LogEntry, allowlist: Allowlist | undefined, rules: GuardRules): Issue | null {
-  const issue = logIssueOf(entry, allowlist, rules);
+function logIssue(entry: LogEntry, allowlist: Allowlist | undefined, rules: GuardRules, appSite: string | undefined, apiOrigin: string): Issue | null {
+  const issue = logIssueOf(entry, allowlist, rules, appSite, apiOrigin);
   return issue && entry.page ? { ...issue, screen: entry.page } : issue;
 }
 
@@ -181,14 +208,18 @@ async function pageIssues(driver: ScreenDriver): Promise<Issue[]> {
   return [...issues, ...layoutIssues(snapshot)];
 }
 
-/** 지금 화면 + since 이후 로그. allowlist가 있으면 허용한 쓰기의 400·409·422를 정상으로 본다. */
+/**
+ * 지금 화면 + since 이후 로그. allowlist가 있으면 허용한 쓰기의 400·409·422를 정상으로 본다.
+ * appSite가 있으면 그 사이트 밖 요청 실패는 세지 않는다(`appSiteOf`).
+ */
 export async function probeScreen(
   driver: ScreenDriver,
   ring: LogRing,
   since: number,
   allowlist?: Allowlist,
+  appSite?: string,
 ): Promise<Issue[]> {
   const screen = await pageIssues(driver);
-  const logs = ring.since(since).map((entry) => logIssue(entry, allowlist, driver.app.guard));
+  const logs = ring.since(since).map((entry) => logIssue(entry, allowlist, driver.app.guard, appSite, driver.app.apiOrigin));
   return [...screen, ...logs.filter((issue) => issue !== null)];
 }

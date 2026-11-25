@@ -167,12 +167,36 @@ function toCandidate(value: unknown): RuleCandidate | null {
   };
 }
 
+/** start의 여는 중괄호와 짝인 닫는 중괄호 자리. 문자열 안의 괄호는 세지 않는다. 없으면 -1 */
+function closingBrace(text: string, start: number): number {
+  let depth = 0;
+  let inString = false;
+  for (let index = start; index < text.length; index += 1) {
+    const char = text[index];
+    if (inString) {
+      if (char === "\\") index += 1;
+      else if (char === '"') inString = false;
+    } else if (char === '"') inString = true;
+    else if (char === "{") depth += 1;
+    else if (char === "}" && (depth -= 1) === 0) return index;
+  }
+  return -1;
+}
+
 /** 응답 글자에서 첫 JSON 객체를 꺼낸다(코드 펜스·설명 문장이 붙어도) */
 export function parseJsonObject(text: string): Record<string, unknown> {
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
   if (start < 0 || end <= start) throw new Error("응답에 JSON이 없습니다.");
-  const parsed: unknown = JSON.parse(text.slice(start, end + 1));
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text.slice(start, end + 1));
+  } catch (error) {
+    // 객체 뒤에 다른 객체·중괄호가 든 설명이 붙은 응답. 첫 객체만 읽는다
+    const close = closingBrace(text, start);
+    if (close < 0 || close === end) throw error;
+    parsed = JSON.parse(text.slice(start, close + 1));
+  }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("응답 JSON이 객체가 아닙니다.");
   return parsed as Record<string, unknown>;
 }

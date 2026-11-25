@@ -28,7 +28,9 @@ Android is driven with adb + Chrome DevTools Protocol (Playwright), iOS with App
 - **Exploration and bot check**: breadth-first exploration, plus a seeded chaos bot (tap, fill inputs, back, double tap, back while loading, background, leaving to another app, restart) that starts from deep screens and groups failures by cause.
 - **Layout and design checks**: measures overflow, clipping, overlap, bottom cut-off, and blank screens, and scores each screen against its linked Figma page. Flows can include a "design check" step.
 - **Policy and Figma checks**: detects Confluence policy changes, extracts rules, and compares Figma copy.
-- **History, alerts, and schedule**: run history in SQLite (`farm.db`), a floating panel for every running check with a stop button, opt-in Slack alerts and finish summaries, a nightly run, and a morning Claude summary.
+- **History, alerts, and schedule**: run history in SQLite (`farm.db`), a floating panel for every running check with a stop button, opt-in Slack alerts and finish summaries, a scheduled run every 3 hours, and a morning Claude summary. Checks line up in one queue.
+- **Fewer false alarms**: popups are recorded and closed, network and 502 screens are waited out, failures are retried once, and device or server trouble is reported as "could not check" instead of an app failure.
+- **Slack QA reports** (optional): tag a configured person or group in a QA channel and Claude turns the report into a flow, runs it on a device, and replies in the thread.
 - **Remote control**: watch the device screen in the browser (Android H.264, iOS MJPEG) and tap it yourself. A device you control is locked for others.
 - **Claude Code (MCP)**: Claude explores the device through MCP tools and turns the paths it finds into flow candidates.
 
@@ -147,8 +149,14 @@ The config file is resolved as `FARM_CONFIG` → `farm.config.ts` in the working
 | `inPageBackNames`           | Names of the in-page back button. Default `["뒤로가기", "Back"]`                                                                                                       |
 | `loginPaths`, `appErrorText` | Login screen paths and the app's error text. Default `["/login"]`, `"Application error"`                                                                             |
 | `android.mainActivity`      | The WebView activity. If another native screen is on top, it is closed with the back key                                                                              |
+| `uncheckedPathPrefixes`     | Path prefixes left out of every check (dev-only screens, retired services) |
+| `android.notificationAppLabel`, `android.devOverlay` | App name whose notification prompt is allowed, and native dev chips / preview to avoid |
+| `popups`                    | `extraCloseNames` (more close-button names), `resultTitles` (popups that end a flow instead of being closed) |
+| `ads`                       | `balancePattern` (regex for the balance shown at the top, used by `watchAd`), `disabledText` (text shown when the reward button is disabled) |
+| `login.kakao`               | Opt-in re-login with the Kakao account saved on the device: pixel `probes` that confirm the login screen, `button`, `notice`. Never types a password |
+| `qaReport`                  | `promptRules`, `opinionRules`: extra app rules for Slack QA reports |
 | `webview`                   | `stackResetScript` (bridge call that closes the WebView stack), `sheetCloseName` (bottom sheet close button)                                                          |
-| `guard`                     | `extraForbiddenButtonWords`, `extraForbiddenClickNames`, `extraForbiddenApiPatterns`, `pushTokenRequests`, and `avoidedNamePattern` / `noPressPathPattern` to never press |
+| `guard`                     | `extraForbiddenButtonWords`, `extraForbiddenClickNames`, `extraForbiddenApiPatterns`, `pushTokenRequests`, `harmlessBlockedPatterns`, and `avoidedNamePattern` / `noPressPathPattern` to never press |
 | `qa`                        | `{ screens, sessionPath }`: data QA screens and rules, and the signed-in session path                                                                                 |
 | `policy.confluence`         | `{ cloudId, spaceKey, titleQuery, siteUrl }`: where the policy docs live                                                                                             |
 | `figma`                     | `{ frontRepo, ref, appDir }`: the front-end checkout used to map screens to Figma nodes                                                                               |

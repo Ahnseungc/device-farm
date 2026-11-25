@@ -52,6 +52,8 @@ export interface GuardConfig {
   pushTokenRequests: AllowedRequest[];
   /** 카오스·탐색이 누르지 않는 광고·외부 링크 이름 */
   avoidedNamePattern: RegExp;
+  /** 막아도 플로우 결과와 무관한 앱 서버 쓰기 요청 경로(광고 노출·통계 등). 바깥 주소는 늘 무관하게 본다 */
+  harmlessBlockedPatterns: RegExp[];
   /** 누르지 않고 나가기만 하는 경로(비밀번호·PIN) */
   noPressPathPattern: RegExp;
 }
@@ -92,6 +94,42 @@ export interface IntroScreen {
   button: string;
 }
 
+/** 광고 보고 적립(`watchAd` 스텝) */
+export interface AdsConfig {
+  /**
+   * 화면 위쪽(높이 20% 안) 잔액 글자의 정규식. 쉼표·공백을 지운 글자 전체와 맞추고, 첫 묶음을 숫자로 읽는다.
+   * 예: `"^(\\d+)P$"`. 비면 잔액을 재는 적립(`reward: "balance"`)을 못 쓰고 `reward: "screen"`만 쓴다
+   */
+  balancePattern?: string;
+  /** 적립 버튼이 꺼졌을 때 보이는 문구(최소 적립량 미달 등). 보이면 실패가 아니라 「점검 못 함」 */
+  disabledText?: string;
+}
+
+/** 화면 픽셀 확인 하나. 자리는 너비·높이 비율(0~1), 색은 [r, g, b] */
+export interface PixelProbe {
+  x: number;
+  y: number;
+  rgb: readonly [number, number, number];
+}
+
+/** 로그아웃됐을 때 기기에 저장된 카카오 계정으로 다시 로그인한다. 비밀번호는 넣지 않는다 */
+export interface KakaoLoginConfig {
+  /** 네이티브 로그인 화면임을 확인하는 픽셀들. 전부 맞을 때만 누른다 */
+  probes: PixelProbe[];
+  /** 「카카오로 시작하기」 버튼 자리(비율) */
+  button: { x: number; y: number };
+  /** (선택) 로그인 화면을 덮는 안내 팝업과 그 닫기 자리(비율) */
+  notice?: { probes: PixelProbe[]; closeButton: { x: number; y: number } };
+}
+
+/** dev 빌드가 웹 위에 네이티브로 그리는 개발용 칩·미리보기. 누르지 않고, 미리보기가 덮으면 닫는다 */
+export interface DevOverlayConfig {
+  /** 개발용 칩에 적힌 글자 */
+  chips: string[];
+  /** (선택) 칩이 여는 미리보기. 화면 맨 위 같은 줄에 두 글자가 함께 있을 때만 미리보기로 본다 */
+  preview?: { marker: string; close: string };
+}
+
 export interface AppConfig extends AppNavigation {
   name: string;
   /** 디바이스팜 화면 언어. 기본 "ko". 환경 변수 `FARM_LOCALE`이 있으면 그것이 이긴다 */
@@ -112,7 +150,18 @@ export interface AppConfig extends AppNavigation {
   android: {
     /** 앱 WebView가 사는 액티비티. 다른 액티비티(네이티브 화면)가 위면 뒤로 키로 닫는다. 비면 닫지 않는다 */
     mainActivity?: string;
+    /** 기기에 보이는 앱 이름. 넣으면 이 앱의 알림 권한 창이 앞을 막을 때 「허용」을 누른다. 비면 누르지 않는다 */
+    notificationAppLabel?: string;
+    devOverlay: DevOverlayConfig;
   };
+  ads: AdsConfig;
+  popups: {
+    /** 팝업 닫기로 볼 버튼 이름을 더한다(작성 중이던 글 「새로 쓰기」 등). 기본 닫기 이름 뒤에 본다 */
+    extraCloseNames: string[];
+    /** 점검 결과인 팝업 글자(「시간이 초과됐어요」 등). 플로우 중에 뜨면 닫지 않고 멈춘다 */
+    resultTitles: string[];
+  };
+  login: { kakao?: KakaoLoginConfig };
   webview: {
     /** 열린 스택 화면을 전부 닫는 페이지 스크립트(앱 브리지). 비면 닫지 않는다 */
     stackResetScript?: string;
@@ -131,8 +180,12 @@ export interface AppConfig extends AppNavigation {
   introScreens: IntroScreen[];
   /** 앞 단계가 있어야 의미 있는 화면(완료·중간 단계). 점검에서 뺀다 */
   excludedScenarioPaths: string[];
+  /** 어떤 점검(화면·정책·버튼)에도 넣지 않는 경로 앞머리(개발용 화면, 접은 서비스). `/dev`는 `/dev`·`/dev/…`·`/dev?…`이고 `/developer`는 아니다 */
+  uncheckedPathPrefixes: string[];
   /** 화면 데이터 QA. `sessionPath`는 로그인 세션(`{ user: { id, accessToken } }`)을 주는 웹 경로 */
   qa: { screens: QaScreen[]; sessionPath: string };
+  /** 슬랙 QA 제보를 점검 플로우로 바꿀 때 Claude에게 더 알려 줄 앱 규칙 한 줄씩(플로우 만들기 / 결과 의견) */
+  qaReport: { promptRules: string[]; opinionRules: string[] };
   policy: { confluence?: ConfluencePolicySource };
   figma: FigmaConfig;
   install: InstallConfig;
@@ -152,7 +205,7 @@ type DeepPartial<T> = { [K in keyof T]?: T[K] extends RegExp | unknown[] ? T[K] 
 export type AppConfigInput = Pick<AppConfig, "name" | "appIds" | "homePath" | "homeTabName" | "tabPaths"> &
   DeepPartial<Omit<AppConfig, "name" | "appIds" | "homePath" | "homeTabName" | "tabPaths" | "guard">> & {
     /** 기본 금지어·금지 경로에 덧붙인다(기본을 지우지 않는다) */
-    guard?: Partial<Pick<GuardConfig, "pushTokenRequests" | "avoidedNamePattern" | "noPressPathPattern">> & {
+    guard?: Partial<Pick<GuardConfig, "pushTokenRequests" | "harmlessBlockedPatterns" | "avoidedNamePattern" | "noPressPathPattern">> & {
       extraForbiddenButtonWords?: string[];
       extraForbiddenClickNames?: string[];
       extraForbiddenApiPatterns?: RegExp[];
@@ -163,6 +216,8 @@ export type AppConfigInput = Pick<AppConfig, "name" | "appIds" | "homePath" | "h
 export const defaultForbiddenButtonWords = [
   "구매", "결제", "매도", "매수", "송금", "출금", "탈퇴", "배송 신청", "주문",
   "환불", "해지", "삭제", "인출", "선물", "충전", "로그아웃", "공유하기",
+  // 「다시 보지 않기」류는 기기에 저장돼 다음 점검부터 그 안내·팝업이 안 뜬다
+  "보지 않기", "보지않기", "그만 보기",
   "Buy", "Pay", "Checkout", "Delete account", "Log out", "Sign out",
 ] as const;
 
@@ -214,7 +269,14 @@ export function defineAppConfig(input: AppConfigInput): AppConfig {
     loginPaths: input.loginPaths ?? [...defaultLoginPaths],
     appErrorText: input.appErrorText ?? defaultAppErrorText,
     deepLink: { scheme: input.deepLink?.scheme ?? "", homeHost: input.deepLink?.homeHost ?? "home" },
-    android: { mainActivity: input.android?.mainActivity },
+    android: {
+      mainActivity: input.android?.mainActivity,
+      notificationAppLabel: input.android?.notificationAppLabel,
+      devOverlay: { chips: input.android?.devOverlay?.chips ?? [], preview: input.android?.devOverlay?.preview as DevOverlayConfig["preview"] },
+    },
+    ads: { balancePattern: input.ads?.balancePattern, disabledText: input.ads?.disabledText },
+    popups: { extraCloseNames: input.popups?.extraCloseNames ?? [], resultTitles: input.popups?.resultTitles ?? [] },
+    login: { kakao: input.login?.kakao as KakaoLoginConfig | undefined },
     webview: {
       stackResetScript: input.webview?.stackResetScript,
       sheetCloseName: input.webview?.sheetCloseName ?? "닫기",
@@ -225,13 +287,16 @@ export function defineAppConfig(input: AppConfigInput): AppConfig {
       forbiddenClickNames: [...defaultForbiddenClickNames, ...(guard.extraForbiddenClickNames ?? [])],
       forbiddenApiPatterns: [...defaultForbiddenApiPatterns, ...(guard.extraForbiddenApiPatterns ?? [])],
       pushTokenRequests: guard.pushTokenRequests ?? [],
+      harmlessBlockedPatterns: guard.harmlessBlockedPatterns ?? [],
       avoidedNamePattern: guard.avoidedNamePattern ?? defaultAvoidedNamePattern,
       noPressPathPattern: guard.noPressPathPattern ?? defaultNoPressPathPattern,
     },
     scenarios: (input.scenarios as ScreenScenario[] | undefined) ?? [],
     excludedScenarioPaths: input.excludedScenarioPaths ?? [],
+    uncheckedPathPrefixes: input.uncheckedPathPrefixes ?? [],
     introScreens: (input.introScreens as IntroScreen[] | undefined) ?? [],
     qa: { screens: (input.qa?.screens as QaScreen[] | undefined) ?? [], sessionPath: input.qa?.sessionPath ?? "/api/auth/session" },
+    qaReport: { promptRules: input.qaReport?.promptRules ?? [], opinionRules: input.qaReport?.opinionRules ?? [] },
     policy: { confluence: input.policy?.confluence as ConfluencePolicySource | undefined },
     figma: { frontRepo: input.figma?.frontRepo, ref: input.figma?.ref ?? "origin/main", appDir: input.figma?.appDir ?? "app" },
     install: { sources: input.install?.sources, firebase: input.install?.firebase, testflightDevAppName: input.install?.testflightDevAppName },

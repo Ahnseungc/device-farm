@@ -11,6 +11,8 @@ export const claudeTimeoutMs = 5 * 60_000;
 export interface AskOptions {
   /** 스크린샷을 읽게 Read 도구를 허용한다 */
   allowRead?: boolean;
+  /** 이 폴더들을 읽고 찾게 한다(Read·Glob·Grep, `--add-dir`). QA 제보에서 앱 코드의 정상 문구 찾기 */
+  searchDirs?: readonly string[];
 }
 
 export type AskClaude = (prompt: string, options?: AskOptions) => Promise<string>;
@@ -21,8 +23,11 @@ type CliResult = { is_error?: boolean; result?: string };
 
 export const askClaude: AskClaude = (prompt, options = {}) =>
   new Promise((resolve, reject) => {
-    const args = ["-p", "--output-format", "json", "--tools", options.allowRead ? "Read" : ""];
-    if (options.allowRead) args.push("--allowedTools", "Read");
+    const search = options.searchDirs?.length ? options.searchDirs : null;
+    const tools = search ? "Read,Glob,Grep" : options.allowRead ? "Read" : "";
+    const args = ["-p", "--output-format", "json", "--tools", tools];
+    if (tools) args.push("--allowedTools", tools);
+    for (const dir of search ?? []) args.push("--add-dir", dir);
     const child = spawn("claude", args, { stdio: ["pipe", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";

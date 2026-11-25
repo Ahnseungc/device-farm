@@ -52,7 +52,7 @@ export function createFixPrButton(deps: FixPrButtonDeps): FixPrButton {
 
   const reply = async (sent: SentAlert, text: string) => {
     if (!sent.ts) return;
-    await deps.client.reply(sent.channel, sent.ts, text).catch((error: unknown) => deps.log(`수정 PR 스레드 답 실패: ${message(error)}`));
+    await deps.client.reply(sent.channel, sent.threadTs ?? sent.ts, text).catch((error: unknown) => deps.log(`수정 PR 스레드 답 실패: ${message(error)}`));
   };
 
   const run = async (key: string, alert: FixableAlert, by: string | undefined) => {

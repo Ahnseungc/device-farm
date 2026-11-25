@@ -7,6 +7,7 @@ import type { ChaosKind } from "@device-farm/core/chaos/policy";
 import type { ChaosRun, ChaosRunSummary, ChaosStep } from "@device-farm/core/chaos/types";
 
 import { api, errorMessage, resultFileUrl, usePoll } from "./api-client";
+import { startedText } from "./activity-model";
 import { FloatingNotice, type Notice } from "./floating-notice";
 import { dateLocale, t } from "./i18n";
 import { issueLabel } from "./issue-labels";
@@ -314,8 +315,8 @@ export function ChaosScreen() {
   async function start() {
     setStarting(true);
     try {
-      await api.startBot();
-      setNotice({ text: t("봇 점검을 시작했어요. 기기마다 30분 돌아요.", "Bot check started. It runs for 30 minutes on each device."), error: false });
+      const { position } = await api.startBot();
+      setNotice({ text: startedText(position, t("봇 점검을 시작했어요. 기기마다 30분 돌아요.", "Bot check started. It runs for 30 minutes on each device.")), error: false });
       await runs.reload();
       setSelected(null);
     } catch (error) {

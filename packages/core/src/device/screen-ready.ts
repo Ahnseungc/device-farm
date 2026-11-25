@@ -11,6 +11,8 @@ export interface ScreenState {
   path: string;
   text: number;
   images: number;
+  /** 화면 절반 넘게 덮는 보이는 iframe 수. 상담 채팅 문의처럼 페이지는 비고 iframe이 그린다 (없으면 0) */
+  frames?: number;
   /** 이동 전에 표시해 둔 그 문서 그대로면 true — 화면이 안 열렸다. */
   stale?: boolean;
 }
@@ -20,7 +22,7 @@ export const staleMarkKey = "__deviceFarmStale";
 export const markStaleScript = `window.${staleMarkKey} = true`;
 
 export const screenStateScript =
-  `({ ready: document.readyState, path: location.pathname, text: (document.body ? document.body.innerText : '').trim().length, images: document.images.length, stale: window.${staleMarkKey} === true })`;
+  `({ ready: document.readyState, path: location.pathname, text: (document.body ? document.body.innerText : '').trim().length, images: document.images.length, frames: Array.from(document.querySelectorAll('iframe')).filter((f) => { const r = f.getBoundingClientRect(); return r.width * r.height > window.innerWidth * window.innerHeight / 2; }).length, stale: window.${staleMarkKey} === true })`;
 
 export function normalizePath(path: string): string {
   const pathname = path.split(/[?#]/)[0] || "/";
@@ -41,7 +43,7 @@ function arrived(target: string, state: ScreenState): boolean {
 }
 
 function painted(state: ScreenState): boolean {
-  return state.ready === "complete" && (state.text > 0 || state.images > 0);
+  return state.ready === "complete" && (state.text > 0 || state.images > 0 || (state.frames ?? 0) > 0);
 }
 
 /** redirectedTo: 앱이 정상적으로 다른 화면으로 보냈다(`/` → 홈 경로, 첫 방문 온보딩 등). */
@@ -67,9 +69,12 @@ export async function waitForScreen(driver: ScreenDriver, target: string, option
     const state = await driver.evaluate<ScreenState>(screenStateScript).catch(() => null);
     if (state && isLoginPath(state.path, driver.app.loginPaths)) return { ok: true };
     if (state && arrived(target, state) && painted(state)) {
-      if (last && last.path === state.path && last.text === state.text && last.images === state.images) {
+      if (last && last.path === state.path && last.text === state.text && last.images === state.images && last.frames === state.frames) {
         return samePath(target, state.path) ? { ok: true } : { ok: true, redirectedTo: normalizePath(state.path) };
       }
+      // 다 그려졌는데 계속 바뀌는 화면(상담 채팅 상담 창 등)은 마감까지 멈추지 않는다. 그때는 그려진 것으로 본다
+      //
+      if (now() >= deadline) return samePath(target, state.path) ? { ok: true } : { ok: true, redirectedTo: normalizePath(state.path) };
       last = state;
       await sleep(screenSettleMs);
       continue;

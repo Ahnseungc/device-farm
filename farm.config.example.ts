@@ -37,6 +37,10 @@ export default defineAppConfig({
   android: {
     // 이 액티비티가 아닌 앱 화면(네이티브 오퍼월 등)이 위에 있으면 뒤로 키로 닫는다. 비우면 닫지 않는다.
     mainActivity: "com.example.shop.MainActivity",
+    // (선택) 이 이름의 앱 알림 권한 창이 앞을 막으면 「허용」을 누른다. 비우면 누르지 않는다.
+    // notificationAppLabel: "샘플 샵",
+    // (선택) dev 빌드가 네이티브로 그리는 개발용 칩. 누르지 않고, 칩이 연 미리보기가 덮으면 닫는다.
+    // devOverlay: { chips: ["미리보기"], preview: { marker: "다시", close: "닫기" } },
   },
   webview: {
     // 열린 WebView 스택을 모두 닫는 앱 브리지(예: flutter_inappwebview 핸들러). 비우면 닫지 않는다.
@@ -48,12 +52,21 @@ export default defineAppConfig({
   // (선택) 처음 한 번만 뜨는 안내 화면. 플로우가 누른 뒤 이 경로면 버튼을 눌러 넘긴다(앱을 새로 깔면 다시 뜬다).
   introScreens: [{ path: "/benefit/onboarding", button: "시작하기" }],
 
+  // (선택) 팝업 닫기로 볼 버튼 이름을 더하고, 떠도 닫지 않고 멈출 결과 팝업 글자를 적는다.
+  // popups: { extraCloseNames: ["새로 쓰기"], resultTitles: ["시간이 초과됐어요"] },
+  // (선택) 광고 보고 적립(watchAd): 화면 위쪽 잔액 글자(쉼표·공백 뺀 것)의 정규식과, 버튼이 꺼졌을 때 보이는 문구.
+  // ads: { balancePattern: "^(\\d+)P$", disabledText: "부터 받을 수 있어요" },
+  // (선택) 로그아웃되면 기기에 저장된 카카오 계정으로 다시 로그인한다. 로그인 화면임을 픽셀로 확인한 뒤에만 누른다.
+  // login: { kakao: { probes: [{ x: 0.2, y: 0.6, rgb: [254, 229, 0] }], button: { x: 0.5, y: 0.6 } } },
+
   guard: {
     // 기본 금지어(구매·결제·송금·출금·탈퇴…)에 더한다
     extraForbiddenButtonWords: ["쿠폰 사용"],
     extraForbiddenApiPatterns: [/coupon\/use/i],
     // 앱이 켜질 때마다 보내 막으면 안 되는 쓰기 요청(푸시 토큰 저장 등)
     pushTokenRequests: [{ method: "POST", path: "/v1/users/{userId}/push-token" }],
+    // 막아도 플로우 결과와 무관한 쓰기 요청(노출·통계)
+    // harmlessBlockedPatterns: [/\/impression$/],
   },
 
   // 고정 주소 화면 점검. excludedScenarioPaths는 앞 단계가 있어야 열리는 완료·중간 화면
@@ -65,6 +78,8 @@ export default defineAppConfig({
     { path: "/order/complete", name: "로그인 후 주문 완료 화면이 열린다", when: "주문 완료 화면을 연다", then: "주문 완료 화면이 보인다" },
   ],
   excludedScenarioPaths: ["/order/complete"],
+  // (선택) 어떤 점검에도 넣지 않는 경로 앞머리(개발용 화면, 접은 서비스)
+  // uncheckedPathPrefixes: ["/dev"],
 
   // 데이터 QA(선택): 화면이 부르는 GET API를 다시 불러 화면 글자와 맞춰 본다. LLM 없이 규칙으로만 판정한다.
   qa: {
@@ -103,6 +118,9 @@ export default defineAppConfig({
   },
   // 피그마 대조(선택): 프론트(Next.js App Router) 체크아웃에서 화면 → 피그마 노드를 뽑는다. 토큰은 .env의 FIGMA_TOKEN
   figma: { frontRepo: "", ref: "origin/main", appDir: "app" },
+
+  // 슬랙 QA 제보(선택): 제보를 플로우로 바꿀 때·의견을 쓸 때 Claude에게 더 알려 줄 앱 규칙. 채널·태그는 .env
+  // qaReport: { promptRules: ["dev 앱은 출석체크 광고를 띄우지 않고 바로 보상한다."], opinionRules: [] },
 
   // 빌드 받기(선택): Firebase App Distribution 앱 id(비우면 .env), iOS dev는 TestFlight에서 깔기
   install: {

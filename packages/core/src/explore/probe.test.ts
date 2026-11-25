@@ -105,4 +105,21 @@ const taggedIssues = await probeScreen(fakeDriver("/home", "", clean), tagged, 5
 assert.equal(taggedIssues.find((issue) => issue.kind === "network")?.screen, "/my");
 assert.ok(!("screen" in (taggedIssues.find((issue) => issue.kind === "console") ?? {})));
 
+// 앱 사이트를 주면 바깥 요청(광고·CDN) 실패는 세지 않는다. 앱 웹·API 요청은 그대로 센다
+{
+  const { appSiteOf, isAppSiteUrl } = await import("./probe");
+  assert.equal(appSiteOf("https://dev.shop.example.com"), "shop.example.com");
+  assert.equal(appSiteOf("https://app.shop.example.com"), "shop.example.com");
+  assert.equal(isAppSiteUrl("https://api-dev.shop.example.com/v1/x", "shop.example.com"), true);
+  assert.equal(isAppSiteUrl("https://notshop.example.com/x", "shop.example.com"), false);
+  assert.equal(isAppSiteUrl("-", "shop.example.com"), true);
+  const mixed = new LogRing(30_000, () => 7_000);
+  mixed.push({ source: "network", text: formatNetworkLog("GET", 404, "https://api-dev.shop.example.com/v1/x") });
+  mixed.push({ source: "network", text: formatNetworkLog("GET", 403, "https://ads.example.com/ad") });
+  const all = await probeScreen(fakeDriver("/home", "", clean), mixed, 7_000);
+  const onlyApp = await probeScreen(fakeDriver("/home", "", clean), mixed, 7_000, undefined, "shop.example.com");
+  assert.equal(all.filter((issue) => issue.kind === "network").length, 2);
+  assert.deepEqual(onlyApp.filter((issue) => issue.kind === "network").map((issue) => issue.message), ["GET 404 https://api-dev.shop.example.com/v1/x"]);
+}
+
 console.log("probe ok");

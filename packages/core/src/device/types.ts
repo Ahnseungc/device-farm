@@ -17,7 +17,7 @@ import type { ButtonResult } from "./button-check";
 /** 진행 패널의 플로우 스텝 한 줄. 예: `누르기 「출석체크」` */
 export type FlowStepView = { label: string; status: "passed" | "running" | "pending" };
 
-export type ScreenStatus = "passed" | "failed" | "candidate" | "login_required";
+export type ScreenStatus = "passed" | "failed" | "candidate" | "login_required" | "inconclusive";
 /** `running`은 실행 중에만 보인다. 실행이 끝나면 나머지 여섯 중 하나가 된다. */
 export type OutcomeStatus = "running" | "passed" | "failed" | "skipped" | "install_failed" | "login_required" | "offline";
 export type RunTrigger = "manual" | "auto";

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { Text } from "@seed-design/react";
 
-import { botActivities, exploreActivities, finishedToast, policyActivity, runActivity, toastLeaveMs, toastVisibleMs, type Activity, type ActivityTab, type DoneToast } from "./activity-model";
+import { botActivities, exploreActivities, finishedToast, policyActivity, queuedDetail, runActivity, toastLeaveMs, toastVisibleMs, type Activity, type ActivityTab, type DoneToast } from "./activity-model";
 import { api, usePoll } from "./api-client";
 import { t } from "./i18n";
 import { ProgressCircle } from "./seed-design/ui/progress-circle";
@@ -11,6 +11,7 @@ import "./activity-dock.css";
 /**
  * 오른쪽 아래 「진행 중」 플로팅과 위쪽 완료 알림 카드.
  * 점검·정책 규칙 뽑기·봇 점검·탐색의 실행 상태를 폴링해, 이 화면을 연 뒤 시작된 작업이 끝나면 알린다.
+ * 아래에 대기열(앞의 작업이 끝나면 차례로 도는 것)을 보이고 하나씩 뺄 수 있다.
  */
 interface ActivityDockProps {
   /** 누른 작업. 점검(`run:`)은 진행 패널을 다시 연다 */
@@ -26,6 +27,11 @@ export function ActivityDock({ onOpen, hideDock = false, hideRun = false }: Acti
   const policy = usePoll(api.policy);
   const bots = usePoll(api.chaosRuns);
   const explores = usePoll(api.latestExplore);
+  const queue = usePoll(api.jobQueue);
+  const waiting = queue.data?.pending ?? [];
+  /** 「빼기」를 누른 대기 작업 id */
+  const [canceling, setCanceling] = useState<Set<string>>(new Set());
+  const [cancelError, setCancelError] = useState<string | null>(null);
   const [toasts, setToasts] = useState<(DoneToast & { leaving?: boolean })[]>([]);
   const seen = useRef(new Set<string>());
   /** 「중지」를 누른 작업. 끝나 목록에서 빠질 때까지 「중지하는 중」 */
@@ -51,6 +57,23 @@ export function ActivityDock({ onOpen, hideDock = false, hideRun = false }: Acti
         return next;
       });
       setStopErrors((current) => ({ ...current, [item.id]: error instanceof Error ? error.message : t("중지하지 못했어요.", "Could not stop it.") }));
+    }
+  };
+
+  const handleCancel = async (id: string) => {
+    setCanceling((current) => new Set(current).add(id));
+    setCancelError(null);
+    try {
+      await api.cancelQueued(id);
+    } catch (error) {
+      setCancelError(error instanceof Error ? error.message : t("빼지 못했어요.", "Could not remove it."));
+    } finally {
+      await queue.reload();
+      setCanceling((current) => {
+        const next = new Set(current);
+        next.delete(id);
+        return next;
+      });
     }
   };
 
@@ -88,9 +111,9 @@ export function ActivityDock({ onOpen, hideDock = false, hideRun = false }: Acti
           </button>
         ))}
       </div>
-      {shown.length > 0 && !hideDock ? (
+      {(shown.length > 0 || waiting.length > 0) && !hideDock ? (
         <section className="activity-dock" aria-label={t("진행 중인 작업", "Running jobs")}>
-          <Text textStyle="t3Bold" color="fg.neutralMuted">{t(`진행 중 ${shown.length}개`, `${shown.length} running`)}</Text>
+          {shown.length > 0 ? <Text textStyle="t3Bold" color="fg.neutralMuted">{t(`진행 중 ${shown.length}개`, `${shown.length} running`)}</Text> : null}
           {shown.map((item) => {
             const isStopping = stopping.has(item.id);
             return (
@@ -118,6 +141,26 @@ export function ActivityDock({ onOpen, hideDock = false, hideRun = false }: Acti
               </div>
             );
           })}
+          {waiting.length > 0 ? (
+            <div className="activity-queue" aria-label={t("대기 중인 작업", "Queued jobs")}>
+              <Text textStyle="t3Bold" color="fg.neutralMuted">{t(`대기 ${waiting.length}개 · 차례로 돌아요`, `${waiting.length} queued · run in order`)}</Text>
+              <ol className="activity-queue-list">
+                {waiting.map((job, index) => (
+                  <li key={job.id} className="activity-queue-item">
+                    <span className="activity-queue-order" aria-hidden="true">{index + 1}</span>
+                    <span className="activity-item-body">
+                      <Text textStyle="t4Medium" className="activity-item-detail">{job.label}</Text>
+                      <Text textStyle="t3Regular" color="fg.neutralSubtle">{queuedDetail(job)}</Text>
+                    </span>
+                    <button type="button" className="activity-stop" disabled={canceling.has(job.id)} aria-label={t(`${job.label} 대기에서 빼기`, `Remove ${job.label} from the queue`)} onClick={() => void handleCancel(job.id)}>
+                      {canceling.has(job.id) ? t("빼는 중", "Removing") : t("빼기", "Remove")}
+                    </button>
+                  </li>
+                ))}
+              </ol>
+              {cancelError ? <Text textStyle="t3Regular" color="fg.critical">{cancelError}</Text> : null}
+            </div>
+          ) : null}
         </section>
       ) : null}
     </>

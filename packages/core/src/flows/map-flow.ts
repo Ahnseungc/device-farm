@@ -62,11 +62,14 @@ export function blocksAt(edges: readonly MapEdge[], path: string, rules: MapRule
 /** 스텝 하나를 지도 위에서 밟는다. 지도에 없는 버튼·안 보인 문구면 사유 문자열. */
 export function advance(edges: readonly MapEdge[], cursor: MapCursor, step: FlowStep, rules: MapRules): MapCursor | string {
   if (step.type === "home") return startCursorOf(rules);
+  // 화면 지도는 앱을 다시 켜는 블록이 없다. 다시 켜면 첫 화면이 계정마다 다를 수 있어 지도로 이어 갈 수 없다
+  if (step.type === "relaunch") return "앱 다시 켜기는 화면 지도로 이어 붙일 수 없습니다.";
   if (step.type === "expectText") {
     return cursor.texts.includes(step.text) ? cursor : `「${step.text}」는 앞 블록을 누른 뒤 지도에 남은 문구가 아닙니다.`;
   }
   // 화면 지도는 입력칸을 모른다. 입력은 지금 화면에 남는 것으로 본다
-  if (step.type === "fill" || step.type === "design") return cursor;
+  // 광고 보고 적립은 광고를 닫고 같은 화면으로 돌아온다
+  if (step.type === "fill" || step.type === "design" || step.type === "watchAd") return cursor;
   if (cursor.popup) return `팝업이 떠 있어 ${cursor.path} 화면 버튼 「${step.target.name}」를 누를 수 없습니다. 홈으로 돌아간 뒤 이어 주세요.`;
   const block = blocksAt(edges, cursor.path, rules).find(
     (item) => item.step.target.role === step.target.role && item.step.target.name === step.target.name,

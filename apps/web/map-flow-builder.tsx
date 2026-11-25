@@ -56,6 +56,8 @@ const describe = (step: FlowStep): string => {
   if (step.type === "expectText") return t(`「${step.text}」 보이는지 확인`, `Check “${step.text}” is shown`);
   if (step.type === "fill") return t(`「${step.label}」에 ${step.value} 입력`, `Type ${step.value} into “${step.label}”`);
   if (step.type === "design") return t("이 화면 디자인 확인", "Check this screen's design");
+  if (step.type === "relaunch") return t("앱 다시 켜기", "Relaunch the app");
+  if (step.type === "watchAd") return t(`「${step.target.name}」 눌러 광고 보고 잔액이 느는지 확인`, `Tap “${step.target.name}”, watch the ad, and check the balance goes up`);
   return t("홈으로 돌아가기", "Back to home");
 };
 

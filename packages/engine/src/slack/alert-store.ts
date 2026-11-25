@@ -10,6 +10,8 @@ export interface SentAlert extends AlertStatusInfo {
   alert: PolicyAlert | FailureAlert | DesignAlert;
   channel: string;
   ts: string;
+  /** 다른 글의 스레드 안에 단 알림이면 그 원글 ts(QA 제보). 스레드 답은 여기에 단다 */
+  threadTs?: string;
   sentAt: string;
 }
 

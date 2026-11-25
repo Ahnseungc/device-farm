@@ -8,6 +8,7 @@ import { LoadingState } from "./loading-state";
 import { MetaLine } from "./meta-line";
 import { FloatingNotice, type Notice } from "./floating-notice";
 import { api, errorMessage, joinPath, resultFileUrl, usePoll, type DeviceWithState } from "./api-client";
+import { startedText } from "./activity-model";
 import { plural, t } from "./i18n";
 import { ActionButton } from "./seed-design/ui/action-button";
 import { Badge } from "./seed-design/ui/badge";
@@ -39,8 +40,8 @@ export function ExploreScreen() {
   async function start() {
     setPending(true);
     try {
-      await api.startExplore(selected.length > 0 ? selected : "all");
-      setNotice({ text: t("탐색을 시작했어요. 경로마다 결과가 아래에 쌓여요.", "Explore started. Results for each path stack up below."), error: false });
+      const { position } = await api.startExplore(selected.length > 0 ? selected : "all");
+      setNotice({ text: startedText(position, t("탐색을 시작했어요. 경로마다 결과가 아래에 쌓여요.", "Explore started. Results for each path stack up below.")), error: false });
       await runs.reload();
     } catch (error) {
       setNotice({ text: errorMessage(error), error: true });

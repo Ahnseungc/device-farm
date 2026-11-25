@@ -4,6 +4,7 @@ import { HStack, Text, VStack } from "@seed-design/react";
 import type { DesignPage } from "@device-farm/core/policy/design-page";
 
 import { api, errorMessage, usePoll } from "./api-client";
+import { startedText } from "./activity-model";
 import { checkedAt, designSorts, matchTone, percent, summarize, visiblePages, type DesignSort } from "./design-model";
 import { FloatingNotice } from "./floating-notice";
 import { t } from "./i18n";
@@ -98,13 +99,13 @@ export function DesignScreen() {
   async function check(paths?: string[]) {
     setRunning(true);
     try {
-      await api.startRun({ kind: "dev", devices: "all", designOnly: true, ...(paths ? { designPaths: paths } : {}) });
+      const { position } = await api.startRun({ kind: "dev", devices: "all", designOnly: true, ...(paths ? { designPaths: paths } : {}) });
       const what = paths ? (paths.length === 1 ? paths[0] : t(`화면 ${paths.length}개`, `${paths.length} screens`)) : t("전체 화면", "all screens");
       setMessage({
-        text: t(
+        text: startedText(position, t(
           `${what} 디자인 점검을 시작했어요. 지금 깔린 dev 앱으로 보고, 오른쪽에서 진행을 볼 수 있어요.`,
           `Started the design check for ${what}. It uses the dev app installed now; progress shows on the right.`,
-        ),
+        )),
         error: false,
       });
       if (paths) setChosen((current) => current.filter((path) => !paths.includes(path)));

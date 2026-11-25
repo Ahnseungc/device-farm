@@ -2,7 +2,7 @@ import { setTimeout as wait } from "node:timers/promises";
 
 import type { AppConfig } from "@device-farm/core/config/app-config";
 import { deepLinkUrl } from "@device-farm/core/device/deep-link";
-import { clickLabels, homeAttempts, type ScreenDriver } from "@device-farm/core/device/driver";
+import { clickLabels, gatewayFailureMessage, homeAttempts, waitOutGateway as waitOutGatewayScreen, type ClickMatch, type ClickRole, type ScreenDriver } from "@device-farm/core/device/driver";
 import { markStaleScript } from "@device-farm/core/device/screen-ready";
 
 export const nativeContext = "NATIVE_APP";
@@ -25,12 +25,16 @@ export const clickTargetHelpers = `const nameOf = (el) => {
   if (label) return label.trim();
   const ids = (el.getAttribute("aria-labelledby") || "").split(/\\s+/).filter(Boolean);
   if (ids.length) return ids.map((id) => (document.getElementById(id) || {}).textContent || "").join(" ").trim();
-  return (el.innerText || el.textContent || "").trim();
+  const text = (el.innerText || el.textContent || "").trim();
+  if (text) return text;
+  // 글자 없이 그림만 든 링크·버튼(앱 진입 배너 「이벤트 배너」)은 그림 설명(alt)이 이름이다. 글자가 있으면 alt는 안 붙인다(「채팅 채팅」)
+  const img = el.querySelector("img[alt]");
+  return img ? (img.getAttribute("alt") || "").trim() : "";
 };
 const selectors = { button: 'button, [role="button"], input[type="button"], input[type="submit"]', link: 'a[href], [role="link"]' };`;
 
 // 역할(button·link)이고 이름이 정확히 같은 요소. aria-label > aria-labelledby > 텍스트 순으로 이름을 본다.
-// Android 드라이버도 같은 스크립트를 쓴다(플로우 버튼 이름이 플랫폼마다 달라지지 않게). img alt는 이름에 안 넣는다.
+// Android 드라이버도 같은 스크립트를 쓴다(플로우 버튼 이름이 플랫폼마다 달라지지 않게). img alt는 글자가 없을 때만 이름이다.
 export const clickButtonScript = `
 // 줄바꿈·연속 공백은 한 칸으로 본다(「1일차↵오늘」). 버튼 목록(explore listActionsScript)과 같은 규칙.
 const squash = (value) => String(value || "").replace(/\\s+/g, " ").trim();
@@ -43,7 +47,11 @@ const candidates = document.querySelectorAll(selectors[role]);
 // 같은 이름의 숨은 버튼(접힌 탭·캐러셀 복제본)을 누르지 않게 화면에 그려진 것만 본다.
 const visible = (el) => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== "hidden";
 // 같은 이름이 여럿이면 마지막(가장 위에 뜬 팝업·시트는 body 끝에 붙는다). 예: 풀팝업 「충전 취소하기」 CTA와 확인 팝업 버튼.
-const target = Array.from(candidates).filter((el) => visible(el) && matches(squash(el.tagName === "INPUT" ? el.value : nameOf(el)))).at(-1);
+const found = Array.from(candidates).filter((el) => visible(el) && matches(squash(el.tagName === "INPUT" ? el.value : nameOf(el))));
+// 눌리는 것(비활성이 아닌 것)을 먼저 고른다. 앞부분 맞춤 「정답」이 정답 배지가 붙은 OX 버튼(「정답 맞다」) 대신
+// 아직 꺼져 있는 「정답 제출하기」를 눌러 아무 일도 없었다. 다 꺼져 있으면 전처럼 마지막 것
+const enabled = found.filter((el) => !el.disabled && el.getAttribute("aria-disabled") !== "true");
+const target = (enabled.length > 0 ? enabled : found).at(-1);
 if (!target) return false;
 target.click();
 return true;
@@ -104,6 +112,45 @@ export function openIosDriver(session: WebdriverIO.Browser, appId: string, app: 
     await inWebView();
     return Boolean(await session.execute(hasTextScript, text));
   };
+  /** 화면이 게이트웨이 오류(배포 중 502 등)면 풀릴 때까지 다시 불러온다. 풀리면 null */
+  const waitOutGateway = () =>
+    waitOutGatewayScreen({
+      bodyText: async () => {
+        await inWebView();
+        return String(await session.execute("return document.body ? document.body.innerText : '';"));
+      },
+      reload: async () => {
+        await inWebView();
+        await session.execute("location.reload(); return true;");
+      },
+      sleep: async (ms) => void (await wait(ms)),
+      log: (message) => console.log(`[farm] iOS ${message}`),
+      relaunch: relaunchOnGateway,
+    });
+  /**
+   * 502가 다시 불러와도 안 풀릴 때: 앱을 끄고 다시 켠 뒤 막혔던 화면으로 딥링크로 다시 들어간다(Android와 같다).
+   * 다시 불러오기는 그 화면 하나만 새로 받아, 배포 전 코드가 남은 다른 WebView가 그대로였다.
+   */
+  async function relaunchOnGateway(): Promise<void> {
+    await inWebView().catch(() => undefined);
+    const path = await session
+      .execute("return location.pathname + location.search;")
+      .then((value) => String(value))
+      .catch(() => "/");
+    await session.execute("mobile: terminateApp", { bundleId: appId });
+    await session.execute("mobile: activateApp", { bundleId: appId });
+    await wait(stackSettleMs);
+    if (path && path !== "/") await session.execute("mobile: deepLink", { url: deepLinkUrl(path, app.deepLink), bundleId: appId });
+    await session.switchContext(await findWebView(session));
+  }
+  /** 이름으로 한 번 눌러 본다. 눌렀으면 true */
+  const clickOnce = async (name: string, role: ClickRole, match: ClickMatch) => {
+    await inWebView();
+    for (const label of clickLabels(app, name, role)) {
+      if ((await session.execute(clickButtonScript, label, role, match)) === true) return true;
+    }
+    return false;
+  };
 
   return {
     app,
@@ -118,15 +165,15 @@ export function openIosDriver(session: WebdriverIO.Browser, appId: string, app: 
       await session.execute("mobile: deepLink", { url: deepLinkUrl(path, app.deepLink), bundleId: appId });
       // 탭 루트는 메인 WebView에서 열려 새 WebView가 안 생긴다. 그때는 마지막 WebView를 쓴다.
       await session.switchContext(await findWebView(session, isTabRoot(path) ? [] : before));
+      // 배포 중 502면 풀릴 때까지 기다린다. 끝내 안 풀리면 그 화면 그대로 점검이 이어 가 실패로 남는다
+      await waitOutGateway();
     },
     clickButton: async (name, role = "button", match = "exact") => {
-      await inWebView();
-      let clicked = false;
-      for (const label of clickLabels(app, name, role)) {
-        clicked = (await session.execute(clickButtonScript, label, role, match)) === true;
-        if (clicked) break;
-      }
-      if (!clicked) throw new Error(`"${name}" ${role === "link" ? "링크를" : "버튼을"} 찾지 못했습니다.`);
+      if (await clickOnce(name, role, match)) return;
+      // 버튼이 없는데 화면이 게이트웨이 오류(배포 중 502)면 풀린 뒤 한 번 더 누른다
+      const gateway = await waitOutGateway();
+      if (gateway) throw new Error(gatewayFailureMessage(`"${name}" ${role === "link" ? "링크" : "버튼"}`, gateway));
+      if (!(await clickOnce(name, role, match))) throw new Error(`"${name}" ${role === "link" ? "링크를" : "버튼을"} 찾지 못했습니다.`);
     },
     goHome: async () => {
       // Android와 같다: 열린 WebView 전부에 스택 닫기를 보내고 하단 홈 탭을 누른다. 못 찾으면 화면 상단 뒤로 버튼을 누르고 다시 한다.
@@ -155,8 +202,13 @@ export function openIosDriver(session: WebdriverIO.Browser, appId: string, app: 
       throw lastError;
     },
     expectText: async (text, timeoutMs) => {
-      const deadline = Date.now() + timeoutMs;
+      let deadline = Date.now() + timeoutMs;
       while (!(await hasText(text))) {
+        // 게이트웨이 오류 화면이면 풀릴 때까지 다시 불러오고, 기다린 만큼 마감을 늦춘다(Android와 같다)
+        const startedAt = Date.now();
+        const gateway = await waitOutGateway();
+        deadline += Date.now() - startedAt;
+        if (gateway) throw new Error(gatewayFailureMessage(`"${text}" 문구`, gateway));
         if (Date.now() >= deadline) throw new Error(`"${text}" 문구가 ${timeoutMs}ms 안에 나오지 않았습니다.`);
         await wait(textPollMs);
       }

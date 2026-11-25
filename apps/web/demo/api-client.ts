@@ -56,6 +56,8 @@ export const api: typeof realApi = {
   stopRun: readOnly,
   stopJob: readOnly,
   startRun: readOnly,
+  jobQueue: read({ running: null, pending: [] }),
+  cancelQueued: readOnly,
   latestRun: read(demoRun),
   runs: read(demoRuns),
   designPages: read(demoDesignPages),
